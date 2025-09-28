@@ -1,0 +1,17 @@
+{
+  "name": "api-iot-esp32",
+  "version": "1.0.0",
+  "description": "API REST para receber dados do ESP32",
+  "main": "api/dados.js",
+  "scripts": {
+    "dev": "vercel dev",
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "mongoose": "^7.6.0",
+    "cors": "^2.8.5"
+  },
+  "engines": {
+    "node": "18.x"
+  }
+}
