@@ -7,5 +7,5 @@ export async function conectarMongoDB() {
   if (!uri) throw new Error("MONGODB_URI não definida");
 
   await mongoose.connect(uri, { bufferCommands: false });
-  console.log("✅ MongoDB conectado com sucesso");
+  console.log("MongoDB conectado com sucesso");
 }
