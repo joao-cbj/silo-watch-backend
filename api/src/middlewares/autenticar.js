@@ -27,7 +27,7 @@ export function autenticar(req, res, next) {
     // Verificar token
     const decoded = jwt.verify(
       token, 
-      process.env.JWT_SECRET || "seu_secret_aqui_mude_isso"
+      process.env.JWT_SECRET 
     );
 
     // Anexar usuário na requisição
