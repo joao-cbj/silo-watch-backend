@@ -21,7 +21,7 @@ app.get("/api/auth/verificar", autenticar, AuthController.verificarToken);
 
 // Dados ESP32
 app.get("/api/dados", autenticar, DadosController.listar);
-app.get("/api/dados/ultimas", autenticar, DadosController.ultimasLeituras);
+app.get("/api/dados/ultimas", autenticar,DadosController.ultimasLeituras);
 app.get("/api/dados/:dispositivoId", autenticar, DadosController.listarPorDispositivo);
 app.post("/api/dados", validarDados, DadosController.criar); 
 
