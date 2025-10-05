@@ -1,12 +1,12 @@
 {
-  "name": "pipeline-data",
+  "name": "silo-watch-backend",
   "version": "1.0.0",
   "type": "module",
   "engines": {
     "node": ">=18"
   },
   "scripts": {
-    "start": "node server.js",
+    "start": "node api/server.js",
     "dev": "nodemon server.js"
   },
   "dependencies": {
