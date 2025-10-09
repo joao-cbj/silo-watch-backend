@@ -13,7 +13,6 @@ app.use(cors());
 
 // ===== ROTAS PÚBLICAS =====
 app.post("/api/auth/login", AuthController.login);
-app.post("/api/usuarios", UsuarioController.criar); // Registro de novos usuários
 
 
 // Verificar token
@@ -28,6 +27,7 @@ app.post("/api/dados", validarDados, DadosController.criar);
 
 
 // Usuários
+app.post("/api/usuarios", autenticar,UsuarioController.criar); // Registro de novos usuários
 app.get("/api/usuarios", autenticar, UsuarioController.listar);
 app.get("/api/usuarios/:id", autenticar, UsuarioController.buscarPorId);
 app.put("/api/usuarios/:id", autenticar, UsuarioController.atualizar);
