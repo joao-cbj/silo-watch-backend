@@ -20,10 +20,12 @@ app.post("/api/usuarios", UsuarioController.criar); // Registro de novos usuári
 app.get("/api/auth/verificar", autenticar, AuthController.verificarToken);
 
 // Dados ESP32
+app.get("/api/dados/exportar", autenticar, DadosController.exportar);
 app.get("/api/dados", autenticar, DadosController.listar);
 app.get("/api/dados/ultimas", autenticar,DadosController.ultimasLeituras);
 app.get("/api/dados/:dispositivoId", autenticar, DadosController.listarPorDispositivo);
 app.post("/api/dados", validarDados, DadosController.criar); 
+
 
 // Usuários
 app.get("/api/usuarios", autenticar, UsuarioController.listar);
