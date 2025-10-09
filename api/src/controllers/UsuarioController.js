@@ -69,6 +69,46 @@ export class UsuarioController {
     }
   }
 
+  // NOVO MÉTODO - Alteração de Senha
+  static async alterarSenha(req, res) {
+    try {
+      const { id } = req.params;
+      const { senhaAtual, novaSenha } = req.body;
+
+      // Validações básicas
+      if (!senhaAtual || !novaSenha) {
+        return res.status(400).json({
+          success: false,
+          error: "Senha atual e nova senha são obrigatórias"
+        });
+      }
+
+      // Validar força da senha
+      if (novaSenha.length < 8) {
+        return res.status(400).json({
+          success: false,
+          error: "A nova senha deve ter no mínimo 8 caracteres"
+        });
+      }
+
+      const resultado = await usuarioService.alterarSenha(id, senhaAtual, novaSenha);
+      
+      res.status(200).json({
+        success: true,
+        message: "Senha alterada com sucesso"
+      });
+    } catch (error) {
+      const statusCode = 
+        error.message === "Usuário não encontrado" ? 404 :
+        error.message === "Senha atual incorreta" ? 401 : 400;
+      
+      res.status(statusCode).json({
+        success: false,
+        error: error.message
+      });
+    }
+  }
+
   static async deletar(req, res) {
     try {
       const { id } = req.params;

@@ -30,5 +30,6 @@ app.get("/api/usuarios", autenticar, UsuarioController.listar);
 app.get("/api/usuarios/:id", autenticar, UsuarioController.buscarPorId);
 app.put("/api/usuarios/:id", autenticar, UsuarioController.atualizar);
 app.delete("/api/usuarios/:id", autenticar, UsuarioController.deletar);
+app.put("/api/usuarios/:id/senha", autenticar, UsuarioController.alterarSenha);
 
 export default app;

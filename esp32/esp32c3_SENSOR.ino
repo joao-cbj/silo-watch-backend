@@ -173,4 +173,8 @@ void loop() {
 
   // Espera 30 segundos até a próxima leitura
   delay(30000);
+<<<<<<< HEAD
 }
+=======
+}
+>>>>>>> f9625c6 (adaptando backend para trabalhar com CRUD)
