@@ -24,23 +24,34 @@ export class DadosController {
     }
   }
 
-  // NOVO - Para os GRÁFICOS - histórico de um dispositivo específico
-  static async listarPorDispositivo(req, res) {
-    try {
-      const { dispositivoId } = req.params;
-      const { horas = 24 } = req.query;
-      
-      const historico = await service.buscarHistorico(dispositivoId, parseInt(horas));
-      
-      res.status(200).json({ 
-        success: true, 
-        dispositivo: dispositivoId,
-        dados: historico 
-      });
-    } catch (err) {
-      res.status(500).json({ success: false, error: err.message });
+// NOVO - Histórico de um dispositivo específico com intervalo de datas
+static async listarPorDispositivo(req, res) {
+  try {
+    const { dispositivoId } = req.params;
+    const { inicio, fim, horas } = req.query;
+
+    let historico = [];
+
+    if (inicio && fim) {
+      const dataInicio = new Date(inicio);
+      const dataFim = new Date(fim);
+      historico = await service.buscarHistoricoPorIntervalo(dispositivoId, dataInicio, dataFim);
+    } else if (horas) {
+      historico = await service.buscarHistorico(dispositivoId, parseInt(horas));
+    } else {
+      // Padrão: últimas 24 horas
+      historico = await service.buscarHistorico(dispositivoId, 24);
     }
+
+    res.status(200).json({
+      success: true,
+      dispositivo: dispositivoId,
+      dados: historico
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
   }
+}
 
   // NOVO - Última leitura de cada dispositivo (otimizado para dashboard)
   static async ultimasLeituras(req, res) {

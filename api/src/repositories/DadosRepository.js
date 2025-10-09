@@ -40,4 +40,16 @@ export class DadosRepository {
       }
     ]);
   }
+
+
+  async buscarHistoricoPorIntervalo(dispositivoId, dataInicio, dataFim) {
+    return await Dados.find({
+      dispositivo: dispositivoId,
+      timestamp: {
+        $gte: dataInicio,
+        $lte: dataFim
+      }
+    }).sort({ timestamp: 1 }).lean();
+  }
+
 }
