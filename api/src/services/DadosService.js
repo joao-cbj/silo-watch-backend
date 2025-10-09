@@ -30,4 +30,10 @@ export class DadosService {
   async buscarUltimasLeituras() {
     return await this.repository.buscarUltimasLeituras();
   }
+
+
+  async buscarHistoricoPorIntervalo(dispositivoId, dataInicio, dataFim) {
+    return await this.repository.buscarHistoricoPorIntervalo(dispositivoId, dataInicio, dataFim);
+  }
+
 }
