@@ -21,11 +21,11 @@ export class AuthService {
     // Gerar token JWT
     const token = jwt.sign(
       { 
-        id: usuario._id, 
+        _id: usuario._id, 
         email: usuario.email,
         nome: usuario.nome 
       },
-      process.env.JWT_SECRET || "seu_secret_aqui_mude_isso",
+      process.env.JWT_SECRET,
       { expiresIn: "7d" }
     );
 
