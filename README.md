@@ -1,4 +1,3 @@
-```markdown
 # Sistema de Monitoramento com ESP32 e Backend Node.js
 
 Este projeto consiste em um backend em **Node.js** com **MongoDB** para receber e armazenar dados de sensores enviados por dispositivos **ESP32** com DHT22. Ele inclui autenticação JWT, CRUD de usuários e endpoints para leituras e exportação de dados em CSV.
@@ -8,7 +7,6 @@ Este projeto consiste em um backend em **Node.js** com **MongoDB** para receber 
 ## Estrutura do Projeto
 
 ```
-
 api/
 ├─ src/
 │  ├─ config/
@@ -35,8 +33,7 @@ api/
 │  └─ server.js
 esp32/
 └─ esp32c3_SENSOR.ino
-
-````
+```
 
 ---
 
@@ -55,7 +52,7 @@ esp32/
 ```bash
 git clone <URL_DO_REPOSITORIO>
 cd api
-````
+```
 
 2. Instale as dependências:
 
@@ -182,5 +179,3 @@ node
 * O ESP32 deve ter acesso à rede do backend.
 * Ajuste o intervalo de envio no loop do ESP32 conforme necessidade.
 * O backend suporta histórico, últimas leituras e exportação de CSV.
-
-```
