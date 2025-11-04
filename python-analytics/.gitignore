@@ -1,0 +1,82 @@
+# --- Arquivos e pastas do Python ---
+
+**pycache**/
+*.py[cod]
+*.pyo
+*.pyd
+*.pdb
+*.egg-info/
+*.egg
+*.manifest
+*.spec
+
+# --- Ambientes virtuais ---
+
+venv/
+.env/
+.venv/
+env/
+ENV/
+
+# --- Configurações do sistema e IDEs ---
+
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# --- Arquivos de logs e cache ---
+
+*.log
+*.tmp
+*.bak
+*.cache/
+*.pytest_cache/
+.pytest_cache/
+.coverage
+coverage.xml
+
+# --- Arquivos de build ---
+
+build/
+dist/
+*.egg-info/
+
+# --- Dependências e pacotes ---
+
+node_modules/
+
+# --- Arquivos de ambiente e segredos ---
+
+.env
+*.env.local
+.env.*
+
+# --- Banco de dados local (se houver) ---
+
+*.db
+*.sqlite3
+
+# --- Arquivos gerados por testes ---
+
+htmlcov/
+test-results.xml
+
+# --- Arquivos de containers ---
+
+docker-compose.override.yml
+
+# --- Jupyter / Notebooks ---
+
+.ipynb_checkpoints/
+
+# --- VSCode / Editor ---
+
+*.code-workspace
+
+# --- SO temporários ---
+
+~$*
+*.tmp
+*.bak
