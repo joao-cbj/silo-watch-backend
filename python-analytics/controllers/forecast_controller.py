@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, Query
 from services.forecast_service import ForecastService
 
+
 router = APIRouter(prefix="/api/forecast", tags=["Forecast & Advanced Analytics"])
 
 forecast_service = ForecastService()

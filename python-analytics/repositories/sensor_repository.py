@@ -1,17 +1,27 @@
 from __future__ import annotations
 from typing import List, Dict, Optional, TYPE_CHECKING
 from datetime import datetime, timedelta
-from config.database import Database
+from config.database import Database # Importa a classe Database
 from bson import ObjectId
 
 if TYPE_CHECKING:
+    # Apenas para type hinting, evita a necessidade de import síncrono
     from motor.motor_asyncio import AsyncIOMotorCollection
 
 class SensorRepository:
     """Repositório para operações com dados de sensores"""
     
     def __init__(self):
-        self.collection: Optional["AsyncIOMotorCollection"] = Database.get_collection("dados") # type: ignore
+        # A coleção NÃO é inicializada aqui.
+        # O construtor é rápido e não tenta conectar ao DB.
+        pass
+    
+    @property
+    def collection(self) -> AsyncIOMotorCollection:
+        """Propriedade para acessar dinamicamente a coleção 'dados'."""
+        # A chamada para get_collection agora acontece APENAS quando
+        # um método assíncrono do repositório é invocado.
+        return Database.get_collection("dados")
     
     async def get_by_device(
         self,
@@ -19,6 +29,7 @@ class SensorRepository:
         limit: int = 100,
         skip: int = 0
     ) -> List[Dict]:
+        # Usa o property self.collection
         cursor = self.collection.find(
             {"dispositivo": device_id}
         ).sort("timestamp", -1).skip(skip).limit(limit)
@@ -49,6 +60,7 @@ class SensorRepository:
         return await cursor.to_list(length=None)
     
     async def get_all_devices(self) -> List[str]:
+        # Usa o property self.collection
         return await self.collection.distinct("dispositivo")
     
     async def get_statistics(
@@ -76,7 +88,7 @@ class SensorRepository:
                 "total_leituras": {"$sum": 1}
             }}
         ]
-
+        # Usa o property self.collection
         result = await self.collection.aggregate(pipeline).to_list(length=1)
         return result[0] if result else {}
     
@@ -104,6 +116,7 @@ class SensorRepository:
             }},
             {"$sort": {"_id": 1}}
         ]
+        # Usa o property self.collection
         return await self.collection.aggregate(pipeline).to_list(length=None)
     
     async def get_daily_extremes(
@@ -130,4 +143,5 @@ class SensorRepository:
             }},
             {"$sort": {"_id": 1}}
         ]
+        # Usa o property self.collection
         return await self.collection.aggregate(pipeline).to_list(length=None)

@@ -11,7 +11,7 @@ load_dotenv()
 class Database:
     """Gerenciador de conexão MongoDB"""
     
-    client: Optional["AsyncIOMotorClient"] = None  # pyright: ignore[reportInvalidTypeForm]
+    client: Optional[AsyncIOMotorClient] = None  # type: ignore 
 
     @classmethod
     async def connect_db(cls) -> None:
@@ -34,8 +34,7 @@ class Database:
             print("🔌 Conexão MongoDB fechada")
 
     @classmethod
-    def get_database(cls) -> "AsyncIOMotorDatabase": # pyright: ignore[reportInvalidTypeForm]
-        
+    def get_database(cls) -> AsyncIOMotorDatabase:  # type: ignore 
         """Obter instância do banco de dados"""
         if cls.client is None:
             raise Exception("Database não está conectado")
@@ -43,7 +42,7 @@ class Database:
         return cls.client[db_name]
 
     @classmethod
-    def get_collection(cls, collection_name: str) -> "AsyncIOMotorCollection": # pyright: ignore[reportInvalidTypeForm]
+    def get_collection(cls, collection_name: str) -> AsyncIOMotorCollection:  # type: ignore 
         """Obter coleção específica"""
         db = cls.get_database()
         return db[collection_name]
