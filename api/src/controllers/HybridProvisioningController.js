@@ -208,55 +208,51 @@ export class HybridProvisioningController {
    * Verifica status do Gateway
    * GET /api/hybrid-provisioning/status
    */
-  static async status(req, res) {
-    try {
-      const timestamp = Date.now();
-      const pingPath = `/comandos/ping_${timestamp}`;
+static async status(req, res) {
+  try {
+    const timestamp = Date.now();
+    
+    // Escreve diretamente em /comandos
+    await db.ref('/comandos').set({
+      acao: 'ping',
+      timestamp,
+      id: `ping_${timestamp}`
+    });
+    
+    console.log('✓ Ping enviado ao Gateway');
+    
+    // Aguarda resposta em /comandos/pong
+    let tentativas = 0;
+    let online = false;
+    
+    while (tentativas < 10) {
+      await new Promise(resolve => setTimeout(resolve, 500));
       
-      // Envia ping
-      await db.ref(pingPath).set({
-        acao: 'ping',
-        timestamp
-      });
+      const snapshot = await db.ref('/comandos/pong').once('value');
       
-      // Aguarda resposta
-      let tentativas = 0;
-      let online = false;
-      
-      while (tentativas < 10) { // 10 * 500ms = 5s
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
-        const snapshot = await db.ref(`${pingPath}/pong`).once('value');
-        
-        if (snapshot.exists()) {
-          online = true;
-          break;
-        }
-        
-        tentativas++;
+      if (snapshot.exists()) {
+        online = true;
+        break;
       }
       
-      // Limpa
-      await db.ref(pingPath).remove();
-      
-      res.status(200).json({
-        success: true,
-        gateway: {
-          online,
-          method: 'firebase+ble'
-        }
-      });
-      
-    } catch (error) {
-      res.status(200).json({
-        success: true,
-        gateway: {
-          online: false,
-          error: error.message
-        }
-      });
+      tentativas++;
     }
+    
+    // Limpa após uso
+    await db.ref('/comandos/pong').remove();
+    
+    res.status(200).json({
+      success: true,
+      gateway: { online, method: 'firebase+ble' }
+    });
+    
+  } catch (error) {
+    res.status(200).json({
+      success: true,
+      gateway: { online: false, error: error.message }
+    });
   }
+}
 
   /**
    * Lista comandos pendentes (debug)
