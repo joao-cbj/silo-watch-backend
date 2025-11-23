@@ -24,11 +24,15 @@ export class HybridProvisioningController {
   static async scan(req, res) {
     try {
       const timestamp = Date.now();
-      const comandoPath = `/comandos/scan_${timestamp}`;
+      const commandId = `scan_${timestamp}`;
       
-      // Escreve comando de scan no Firebase
-      await db.ref(comandoPath).set({
+      // Limpa comandos anteriores
+      await db.ref('/comandos/dispositivos').remove();
+      
+      // Escreve comando direto em /comandos (não em subpasta)
+      await db.ref('/comandos').set({
         acao: 'scan',
+        id: commandId,
         timestamp,
         status: 'aguardando'
       });
@@ -42,19 +46,29 @@ export class HybridProvisioningController {
       while (tentativas < 30) { // 30 * 500ms = 15s
         await new Promise(resolve => setTimeout(resolve, 500));
         
-        const snapshot = await db.ref(`${comandoPath}/dispositivos`).once('value');
+        const snapshot = await db.ref('/comandos/dispositivos').once('value');
         
         if (snapshot.exists()) {
           const data = snapshot.val();
-          dispositivos = Array.isArray(data) ? data : [];
+          
+          // Tenta parsear se for string JSON
+          if (typeof data === 'string') {
+            try {
+              dispositivos = JSON.parse(data);
+            } catch {
+              dispositivos = [];
+            }
+          } else if (Array.isArray(data)) {
+            dispositivos = data;
+          }
+          
           break;
         }
         
         tentativas++;
       }
       
-      // Remove comando do Firebase (limpeza)
-      await db.ref(comandoPath).remove();
+      console.log(`✓ Scan concluído. ${dispositivos.length} dispositivos encontrados`);
       
       res.status(200).json({
         success: true,
@@ -105,14 +119,18 @@ export class HybridProvisioningController {
       }
 
       const timestamp = Date.now();
-      const comandoPath = `/comandos/provision_${timestamp}`;
+      const commandId = `provision_${timestamp}`;
       
       // Gera nome do dispositivo
       const dispositivoId = silo.nome.replace(/\s+/g, '_');
 
-      // Escreve comando de provisionamento no Firebase
-      await db.ref(comandoPath).set({
+      // Limpa status anterior
+      await db.ref('/comandos/status').remove();
+
+      // Escreve comando direto em /comandos (não em subpasta)
+      await db.ref('/comandos').set({
         acao: 'provisionar',
+        id: commandId,
         macSilo: macSilo.toUpperCase(),
         siloNome: silo.nome,
         siloId: silo._id.toString(),
@@ -132,7 +150,7 @@ export class HybridProvisioningController {
       while (tentativas < 60) { // 60 * 500ms = 30s
         await new Promise(resolve => setTimeout(resolve, 500));
         
-        const snapshot = await db.ref(`${comandoPath}/status`).once('value');
+        const snapshot = await db.ref('/comandos/status').once('value');
         
         if (snapshot.exists()) {
           statusFinal = snapshot.val();
@@ -140,7 +158,7 @@ export class HybridProvisioningController {
           if (statusFinal === 'provisionado') {
             provisionado = true;
             break;
-          } else if (statusFinal.startsWith('erro')) {
+          } else if (statusFinal && statusFinal.startsWith('erro')) {
             break;
           }
         }
@@ -148,8 +166,7 @@ export class HybridProvisioningController {
         tentativas++;
       }
 
-      // Remove comando do Firebase (limpeza)
-      await db.ref(comandoPath).remove();
+      console.log(`Status final: ${statusFinal}`);
 
       // Verifica resultado
       if (!provisionado) {
@@ -208,51 +225,65 @@ export class HybridProvisioningController {
    * Verifica status do Gateway
    * GET /api/hybrid-provisioning/status
    */
-static async status(req, res) {
-  try {
-    const timestamp = Date.now();
-    
-    // Escreve diretamente em /comandos
-    await db.ref('/comandos').update({
-      acao: 'ping',
-      timestamp,
-      id: `ping_${timestamp}`
-    });
-    
-    console.log('✓ Ping enviado ao Gateway');
-    
-    // Aguarda resposta em /comandos/pong
-    let tentativas = 0;
-    let online = false;
-    
-    while (tentativas < 20) {
-      await new Promise(resolve => setTimeout(resolve, 500));
+  static async status(req, res) {
+    try {
+      const timestamp = Date.now();
+      const commandId = `ping_${timestamp}`;
       
-      const snapshot = await db.ref('/comandos/pong').once('value');
+      // Limpa pong anterior
+      await db.ref('/comandos/pong').remove();
       
-      if (snapshot.exists()) {
-        online = true;
-        break;
+      // Escreve comando direto em /comandos (não em subpasta)
+      await db.ref('/comandos').set({
+        acao: 'ping',
+        id: commandId,
+        timestamp
+      });
+      
+      console.log('✓ Ping enviado ao Gateway:', commandId);
+      
+      // Aguarda resposta em /comandos/pong
+      let tentativas = 0;
+      let online = false;
+      
+      while (tentativas < 15) { // 15 * 500ms = 7.5s
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        const snapshot = await db.ref('/comandos/pong').once('value');
+        
+        if (snapshot.exists() && snapshot.val() === true) {
+          online = true;
+          console.log('✓ Pong recebido do Gateway!');
+          break;
+        }
+        
+        tentativas++;
       }
       
-      tentativas++;
+      if (!online) {
+        console.log('✗ Gateway não respondeu ao ping');
+      }
+      
+      res.status(200).json({
+        success: true,
+        gateway: { 
+          online, 
+          method: 'firebase+ble',
+          lastPing: commandId
+        }
+      });
+      
+    } catch (error) {
+      console.error('Erro ao verificar status:', error);
+      res.status(200).json({
+        success: true,
+        gateway: { 
+          online: false, 
+          error: error.message 
+        }
+      });
     }
-    
-    // Limpa após uso
-    await db.ref('/comandos/pong').remove();
-    
-    res.status(200).json({
-      success: true,
-      gateway: { online, method: 'firebase+ble' }
-    });
-    
-  } catch (error) {
-    res.status(200).json({
-      success: true,
-      gateway: { online: false, error: error.message }
-    });
   }
-}
 
   /**
    * Lista comandos pendentes (debug)
@@ -261,19 +292,21 @@ static async status(req, res) {
   static async listarComandos(req, res) {
     try {
       const snapshot = await db.ref('/comandos').once('value');
-      const comandos = [];
       
-      snapshot.forEach((child) => {
-        comandos.push({
-          key: child.key,
-          ...child.val()
+      if (!snapshot.exists()) {
+        return res.status(200).json({
+          success: true,
+          comandos: {},
+          total: 0
         });
-      });
+      }
+      
+      const comandos = snapshot.val();
       
       res.status(200).json({
         success: true,
         comandos,
-        total: comandos.length
+        total: Object.keys(comandos).length
       });
       
     } catch (error) {
@@ -291,6 +324,8 @@ static async status(req, res) {
   static async limparComandos(req, res) {
     try {
       await db.ref('/comandos').remove();
+      
+      console.log('✓ Comandos limpos');
       
       res.status(200).json({
         success: true,
