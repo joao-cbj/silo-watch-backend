@@ -1,7 +1,10 @@
 // controllers/HybridProvisioningController.js
 import admin from 'firebase-admin';
-import serviceAccount from '../config/firebase-service-account.json' assert { type: 'json' };
 import Silo from '../models/Silo.js';
+
+const serviceAccount = JSON.parse(
+  process.env.FIREBASE_SERVICE_ACCOUNT_JSON
+);
 
 // Inicializa Firebase Admin (uma vez)
 if (!admin.apps.length) {
