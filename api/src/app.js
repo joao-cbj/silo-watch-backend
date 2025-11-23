@@ -4,7 +4,7 @@ import { DadosController } from "./controllers/DadosController.js";
 import { UsuarioController } from "./controllers/UsuarioController.js";
 import { AuthController } from "./controllers/AuthController.js";
 import { SiloController } from "./controllers/SiloController.js";
-import { HybridProvisioningController } from './controllers/HybridProvisioningController.js';
+import { HybridProvisioningController } from './controllers/MQTTProvisioningController.js';
 import { validarDados } from "./middlewares/validarDados.js";
 import { validarSilo, validarAtualizacaoSilo } from "./middlewares/validarSilo.js";
 import { autenticar } from "./middlewares/autenticar.js";
@@ -20,12 +20,11 @@ app.post("/api/auth/login", AuthController.login);
 // Verificar token
 app.get("/api/auth/verificar", autenticar, AuthController.verificarToken);
 
-// ===== ROTAS DE PROVISIONAMENTO =====
-app.post('/api/hybrid-provisioning/scan', autenticar, HybridProvisioningController.scan);
-app.post('/api/hybrid-provisioning/provision', autenticar, HybridProvisioningController.provision);
-app.get('/api/hybrid-provisioning/status', autenticar, HybridProvisioningController.status);
-app.get('/api/hybrid-provisioning/comandos', autenticar, HybridProvisioningController.listarComandos);
-app.delete('/api/hybrid-provisioning/limpar', autenticar, HybridProvisioningController.limparComandos);
+// Rotas MQTT
+app.get('/api/mqtt-provisioning/status', autenticar, MQTTProvisioningController.status);
+app.post('/api/mqtt-provisioning/scan', autenticar, MQTTProvisioningController.scan);
+app.post('/api/mqtt-provisioning/provision', autenticar, MQTTProvisioningController.provision);
+app.get('/api/mqtt-provisioning/info', autenticar, MQTTProvisioningController.listarComandos);
 
 // ===== ROTAS DE SILOS =====
 app.get("/api/silos", autenticar, SiloController.listar);
