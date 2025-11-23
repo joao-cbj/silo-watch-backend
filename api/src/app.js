@@ -4,7 +4,7 @@ import { DadosController } from "./controllers/DadosController.js";
 import { UsuarioController } from "./controllers/UsuarioController.js";
 import { AuthController } from "./controllers/AuthController.js";
 import { SiloController } from "./controllers/SiloController.js";
-import { ProvisioningController } from "./controllers/ProvisioningController.js";
+import { HybridProvisioningController } from './controllers/HybridProvisioningController.js';
 import { validarDados } from "./middlewares/validarDados.js";
 import { validarSilo, validarAtualizacaoSilo } from "./middlewares/validarSilo.js";
 import { autenticar } from "./middlewares/autenticar.js";
@@ -21,10 +21,11 @@ app.post("/api/auth/login", AuthController.login);
 app.get("/api/auth/verificar", autenticar, AuthController.verificarToken);
 
 // ===== ROTAS DE PROVISIONAMENTO =====
-app.get("/api/provisioning/ping", autenticar, ProvisioningController.ping);
-app.post("/api/provisioning/scan", autenticar, ProvisioningController.scan);
-app.post("/api/provisioning/provision", autenticar, ProvisioningController.provision);
-app.get("/api/provisioning/status", autenticar, ProvisioningController.status);
+app.post('/api/hybrid-provisioning/scan', autenticar, HybridProvisioningController.scan);
+app.post('/api/hybrid-provisioning/provision', autenticar, HybridProvisioningController.provision);
+app.get('/api/hybrid-provisioning/status', autenticar, HybridProvisioningController.status);
+app.get('/api/hybrid-provisioning/comandos', autenticar, HybridProvisioningController.listarComandos);
+app.delete('/api/hybrid-provisioning/limpar', autenticar, HybridProvisioningController.limparComandos);
 
 // ===== ROTAS DE SILOS =====
 app.get("/api/silos", autenticar, SiloController.listar);
