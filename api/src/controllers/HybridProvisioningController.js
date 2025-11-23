@@ -213,7 +213,7 @@ static async status(req, res) {
     const timestamp = Date.now();
     
     // Escreve diretamente em /comandos
-    await db.ref('/comandos').set({
+    await db.ref('/comandos').update({
       acao: 'ping',
       timestamp,
       id: `ping_${timestamp}`
@@ -225,7 +225,7 @@ static async status(req, res) {
     let tentativas = 0;
     let online = false;
     
-    while (tentativas < 10) {
+    while (tentativas < 20) {
       await new Promise(resolve => setTimeout(resolve, 500));
       
       const snapshot = await db.ref('/comandos/pong').once('value');
