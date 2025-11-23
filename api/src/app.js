@@ -4,7 +4,7 @@ import { DadosController } from "./controllers/DadosController.js";
 import { UsuarioController } from "./controllers/UsuarioController.js";
 import { AuthController } from "./controllers/AuthController.js";
 import { SiloController } from "./controllers/SiloController.js";
-import { HybridProvisioningController } from './controllers/MQTTProvisioningController.js';
+import { MQTTProvisioningController } from './controllers/MQTTProvisioningController.js';
 import { validarDados } from "./middlewares/validarDados.js";
 import { validarSilo, validarAtualizacaoSilo } from "./middlewares/validarSilo.js";
 import { autenticar } from "./middlewares/autenticar.js";
