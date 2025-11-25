@@ -1,27 +1,48 @@
 import { SiloRepository } from "../repositories/SiloRepository.js";
 
-export class SiloService {
-  constructor() {
-    this.repository = new SiloRepository();
-  }
+const repository = new SiloRepository();
 
+export class SiloService {
   async criar(dados) {
-    // Validações
-    if (!dados.nome || !dados.tipoSilo) {
-      throw new Error("Nome e tipo do silo são obrigatórios");
+    const { nome, tipoSilo, dispositivo } = dados;
+
+    if (dispositivo) {
+      const existe = await repository.verificarDispositivoExiste(dispositivo);
+      if (existe) {
+        throw new Error("Dispositivo já está vinculado a outro silo");
+      }
     }
 
-    return await this.repository.criar(dados);
+    return await repository.criar({
+      nome: nome.trim(),
+      tipoSilo,
+      dispositivo: dispositivo?.trim(),
+      integrado: !!dispositivo
+    });
   }
 
   async listarTodos(filtros = {}) {
-    const silos = await this.repository.listarTodos(filtros);
-    const total = await this.repository.contar(filtros);
-    return { silos, total };
+    const silos = await repository.listarTodos(filtros);
+    const total = await repository.contar(filtros);
+    
+    return {
+      silos,
+      total,
+      integrados: silos.filter(s => s.integrado).length,
+      naoIntegrados: silos.filter(s => !s.integrado).length
+    };
   }
 
   async buscarPorId(id) {
-    const silo = await this.repository.buscarPorId(id);
+    const silo = await repository.buscarPorId(id);
+    if (!silo) {
+      throw new Error("Silo não encontrado");
+    }
+    return silo;
+  }
+
+  async buscarPorDispositivo(dispositivo) {
+    const silo = await repository.buscarPorDispositivo(dispositivo);
     if (!silo) {
       throw new Error("Silo não encontrado");
     }
@@ -29,31 +50,43 @@ export class SiloService {
   }
 
   async atualizar(id, dados) {
-    // Verifica se o silo existe
-    await this.buscarPorId(id);
+    const siloExistente = await this.buscarPorId(id);
 
-    // Se está integrando um dispositivo, verifica se já não está em uso
-    if (dados.dispositivo) {
-      const existe = await this.repository.verificarDispositivoExiste(
-        dados.dispositivo, 
-        id
-      );
+    if (dados.dispositivo && dados.dispositivo !== siloExistente.dispositivo) {
+      const existe = await repository.verificarDispositivoExiste(dados.dispositivo, id);
       if (existe) {
-        throw new Error(`Dispositivo ${dados.dispositivo} já está integrado a outro silo`);
+        throw new Error("Dispositivo já está vinculado a outro silo");
       }
     }
 
-    return await this.repository.atualizar(id, dados);
+    const dadosAtualizados = {};
+    if (dados.nome) dadosAtualizados.nome = dados.nome.trim();
+    if (dados.tipoSilo) dadosAtualizados.tipoSilo = dados.tipoSilo;
+    if (dados.dispositivo !== undefined) {
+      dadosAtualizados.dispositivo = dados.dispositivo?.trim();
+      dadosAtualizados.integrado = !!dados.dispositivo;
+    }
+
+    return await repository.atualizar(id, dadosAtualizados);
   }
 
   async deletar(id) {
-    // Verifica se o silo existe
-    await this.buscarPorId(id);
-    
-    return await this.repository.deletar(id);
+    const silo = await this.buscarPorId(id);
+    await repository.deletar(id);
+    return silo;
   }
 
-  async buscarPorDispositivo(dispositivo) {
-    return await this.repository.buscarPorDispositivo(dispositivo);
+  // Retorna estatísticas dos silos
+  async obterEstatisticas() {
+    const total = await repository.contar();
+    const ativos = await repository.contar({ integrado: true });
+    const inativos = await repository.contar({ integrado: false });
+
+    return {
+      total,
+      ativos,
+      inativos,
+      porcentagemAtivos: total > 0 ? ((ativos / total) * 100).toFixed(1) : 0
+    };
   }
 }

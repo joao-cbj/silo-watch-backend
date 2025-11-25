@@ -1,4 +1,5 @@
 import { SiloService } from "../services/SiloService.js";
+import Dados from "../models/Dados.js";
 
 const service = new SiloService();
 
@@ -76,13 +77,30 @@ export class SiloController {
     }
   }
 
+  // ATUALIZADO: Deleta silo E seus dados
   static async deletar(req, res) {
     try {
       const { id } = req.params;
+      
+      // Busca o silo primeiro para pegar o dispositivo
+      const silo = await service.buscarPorId(id);
+      
+      // Deleta o silo
       await service.deletar(id);
+      
+      // Se tinha dispositivo integrado, deleta os dados também
+      let dadosDeletados = 0;
+      if (silo.dispositivo && silo.integrado) {
+        const resultado = await Dados.deleteMany({ 
+          dispositivo: silo.dispositivo 
+        });
+        dadosDeletados = resultado.deletedCount;
+      }
+      
       res.status(200).json({ 
         success: true, 
-        message: "Silo deletado com sucesso" 
+        message: "Silo deletado com sucesso",
+        dadosDeletados: dadosDeletados
       });
     } catch (err) {
       const status = err.message === "Silo não encontrado" ? 404 : 500;
@@ -106,7 +124,6 @@ export class SiloController {
         });
       }
 
-      // Retorna apenas dados necessários para o ESP
       res.status(200).json({ 
         success: true, 
         data: {
@@ -114,6 +131,22 @@ export class SiloController {
           dispositivo: silo.dispositivo,
           integrado: silo.integrado
         }
+      });
+    } catch (err) {
+      res.status(500).json({ 
+        success: false, 
+        error: err.message 
+      });
+    }
+  }
+
+  // Novo endpoint para estatísticas
+  static async estatisticas(req, res) {
+    try {
+      const stats = await service.obterEstatisticas();
+      res.status(200).json({ 
+        success: true, 
+        data: stats 
       });
     } catch (err) {
       res.status(500).json({ 

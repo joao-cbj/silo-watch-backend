@@ -1,9 +1,13 @@
 import { DadosService } from "../services/DadosService.js";
 import { Parser } from "json2csv";
+import Dados from "../models/Dados.js";
+import Silo from "../models/Silo.js";
 
 const service = new DadosService();
 
 export class DadosController {
+  // ==================== MÉTODOS EXISTENTES (mantidos) ====================
+
   static async criar(req, res) {
     try {
       const dados = await service.salvar(req.body);
@@ -54,16 +58,6 @@ export class DadosController {
     }
   }
 
-  // Última leitura de cada dispositivo (para dashboard)
-  static async ultimasLeituras(req, res) {
-    try {
-      const leituras = await service.buscarUltimasLeituras();
-      res.status(200).json({ success: true, data: leituras });
-    } catch (err) {
-      res.status(500).json({ success: false, error: err.message });
-    }
-  }
-
   // Exportar dados para CSV
   static async exportar(req, res) {
     try {
@@ -105,6 +99,117 @@ export class DadosController {
       return res
         .status(500)
         .json({ success: false, message: "Erro ao gerar CSV." });
+    }
+  }
+
+  // ==================== MÉTODOS ATUALIZADOS ====================
+
+  // ✨ ATUALIZADO: Última leitura de cada dispositivo COM INNER JOIN (para dashboard)
+  static async ultimasLeituras(req, res) {
+    try {
+      // Agrupa os dados por dispositivo e pega o mais recente
+      const ultimasDados = await Dados.aggregate([
+        {
+          $sort: { timestamp: -1 }
+        },
+        {
+          $group: {
+            _id: "$dispositivo",
+            temperatura: { $first: "$temperatura" },
+            umidade: { $first: "$umidade" },
+            timestamp: { $first: "$timestamp" }
+          }
+        }
+      ]);
+
+      // Busca informações dos silos integrados
+      const silosIntegrados = await Silo.find({ integrado: true }).lean();
+
+      // Faz o "INNER JOIN" manual - apenas silos com dados E cadastrados
+      const dadosComSilo = ultimasDados
+        .map(dado => {
+          const silo = silosIntegrados.find(s => s.dispositivo === dado._id);
+          
+          // INNER JOIN: só retorna se o silo existir
+          if (!silo) return null;
+          
+          return {
+            _id: silo._id,
+            dispositivo: dado._id,
+            nome: silo.nome,
+            tipoSilo: silo.tipoSilo,
+            temperatura: dado.temperatura,
+            umidade: dado.umidade,
+            timestamp: dado.timestamp,
+            integrado: true
+          };
+        })
+        .filter(item => item !== null); // Remove itens sem silo correspondente
+
+      res.status(200).json({
+        success: true,
+        data: dadosComSilo,
+        total: dadosComSilo.length
+      });
+    } catch (error) {
+      console.error("Erro ao buscar últimas leituras:", error);
+      res.status(500).json({
+        success: false,
+        error: "Erro ao buscar dados"
+      });
+    }
+  }
+
+  // ==================== NOVOS MÉTODOS ====================
+
+  // ✨ NOVO: Busca histórico de um dispositivo específico (método alternativo)
+  static async buscarHistorico(req, res) {
+    try {
+      const { dispositivo } = req.params;
+      const { limit = 100, hours = 24 } = req.query;
+
+      const horasAtras = new Date(Date.now() - hours * 60 * 60 * 1000);
+
+      const dados = await Dados.find({
+        dispositivo,
+        timestamp: { $gte: horasAtras }
+      })
+        .sort({ timestamp: -1 })
+        .limit(parseInt(limit))
+        .lean();
+
+      res.status(200).json({
+        success: true,
+        data: dados,
+        total: dados.length
+      });
+    } catch (error) {
+      console.error("Erro ao buscar histórico:", error);
+      res.status(500).json({
+        success: false,
+        error: "Erro ao buscar histórico"
+      });
+    }
+  }
+
+  // ✨ NOVO: Deleta dados de um silo específico
+  static async deletarPorDispositivo(req, res) {
+    try {
+      const { dispositivo } = req.params;
+
+      const resultado = await Dados.deleteMany({ dispositivo });
+
+      res.status(200).json({
+        success: true,
+        message: `${resultado.deletedCount} leituras deletadas`,
+        deletedCount: resultado.deletedCount
+      });
+    } catch (error) {
+      console.error("Erro ao deletar dados:", error);
+      res.status(500).json({
+        success: false,
+        error: "Erro ao deletar dados"
+      });
     }
   }
 }
