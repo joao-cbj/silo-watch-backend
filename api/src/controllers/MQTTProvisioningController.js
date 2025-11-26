@@ -171,6 +171,12 @@ export class MQTTProvisioningController {
       const commandId = `provision_${Date.now()}`;
       const dispositivoId = silo.nome.trim(); 
       
+      console.log(`\n=== PROVISIONAR SILO ===`);
+      console.log(`ID: ${siloId}`);
+      console.log(`Nome: ${silo.nome}`);
+      console.log(`MAC: ${macSilo}`);
+      console.log(`Dispositivo ID: "${dispositivoId}"`);
+      
       let responded = false;
       const timeout = setTimeout(() => {
         if (!responded) {
@@ -185,6 +191,8 @@ export class MQTTProvisioningController {
         if (topic === 'gateway/resposta/provision') {
           try {
             const data = JSON.parse(message.toString());
+            console.log('Resposta provision recebida:', data);
+            
             if (data.id === commandId) {
               responded = true;
               clearTimeout(timeout);
@@ -221,14 +229,18 @@ export class MQTTProvisioningController {
 
       client.on('message', handler);
 
-      client.publish('gateway/comando', JSON.stringify({
+      const comando = {
         acao: 'provisionar',
         id: commandId,
         macSilo: macSilo.toUpperCase(),
         siloNome: silo.nome,
         siloId: silo._id.toString(),
         timestamp: Date.now()
-      }));
+      };
+
+      console.log('Comando MQTT a enviar:', JSON.stringify(comando, null, 2));
+
+      client.publish('gateway/comando', JSON.stringify(comando));
 
       console.log(`✓ Comando provision enviado: ${silo.nome} (${macSilo})`);
 
@@ -241,7 +253,7 @@ export class MQTTProvisioningController {
     }
   }
 
-  // ✨ NOVO: Desintegrar silo (reset via ESP-NOW)
+  // ✨ CORRIGIDO: Desintegrar silo (reset via ESP-NOW)
   static async desintegrar(req, res) {
     try {
       const { siloId } = req.body;
@@ -269,6 +281,22 @@ export class MQTTProvisioningController {
         });
       }
 
+      // ✅ CORREÇÃO: Usa o campo correto e faz trim
+      const dispositivoAlvo = (silo.dispositivo || silo.nome).trim();
+      
+      if (!dispositivoAlvo) {
+        return res.status(400).json({
+          success: false,
+          error: 'Nome do dispositivo não encontrado'
+        });
+      }
+
+      console.log(`\n=== DESINTEGRAR SILO ===`);
+      console.log(`ID: ${siloId}`);
+      console.log(`Nome: ${silo.nome}`);
+      console.log(`Dispositivo: ${silo.dispositivo}`);
+      console.log(`Alvo a enviar: "${dispositivoAlvo}"`);
+
       const client = connectMQTT();
       const commandId = `desintegrar_${Date.now()}`;
       
@@ -277,7 +305,12 @@ export class MQTTProvisioningController {
         if (!responded) {
           res.status(408).json({
             success: false,
-            error: 'Timeout: Gateway não respondeu'
+            error: 'Timeout: Gateway não respondeu',
+            debug: {
+              dispositivoEnviado: dispositivoAlvo,
+              siloNome: silo.nome,
+              siloDispositivo: silo.dispositivo
+            }
           });
         }
       }, 20000);
@@ -286,6 +319,8 @@ export class MQTTProvisioningController {
         if (topic === 'gateway/resposta/desintegrar') {
           try {
             const data = JSON.parse(message.toString());
+            console.log('Resposta desintegrar recebida:', data);
+            
             if (data.id === commandId) {
               responded = true;
               clearTimeout(timeout);
@@ -304,13 +339,21 @@ export class MQTTProvisioningController {
                     id: silo._id,
                     nome: silo.nome,
                     integrado: false
+                  },
+                  debug: {
+                    dispositivoEnviado: dispositivoAlvo,
+                    respostaGateway: data.status
                   }
                 });
               } else {
                 res.status(400).json({
                   success: false,
                   error: data.error || 'Erro ao desintegrar',
-                  status: data.status
+                  status: data.status,
+                  debug: {
+                    dispositivoEnviado: dispositivoAlvo,
+                    respostaGateway: data
+                  }
                 });
               }
             }
@@ -322,14 +365,18 @@ export class MQTTProvisioningController {
 
       client.on('message', handler);
 
-      client.publish('gateway/comando', JSON.stringify({
+      const comando = {
         acao: 'desintegrar',
         id: commandId,
-        dispositivo: silo.dispositivo,
+        dispositivo: dispositivoAlvo,  // ✅ Nome tratado
         timestamp: Date.now()
-      }));
+      };
 
-      console.log(`✓ Comando desintegrar enviado: ${silo.nome} (${silo.dispositivo})`);
+      console.log('Comando MQTT a enviar:', JSON.stringify(comando, null, 2));
+
+      client.publish('gateway/comando', JSON.stringify(comando));
+
+      console.log(`✓ Comando desintegrar enviado: "${dispositivoAlvo}"`);
 
     } catch (error) {
       console.error('Erro ao desintegrar:', error);
@@ -340,7 +387,7 @@ export class MQTTProvisioningController {
     }
   }
 
-  // ✨ NOVO: Atualizar nome do silo (sincroniza com ESP32)
+  // ✨ CORRIGIDO: Atualizar nome do silo (sincroniza com ESP32)
   static async atualizarNome(req, res) {
     try {
       const { siloId, novoNome } = req.body;
@@ -368,14 +415,24 @@ export class MQTTProvisioningController {
         });
       }
 
+      // ✅ CORREÇÃO: Usa dispositivo atual (nome antigo)
+      const dispositivoAtual = (silo.dispositivo || silo.nome).trim();
+      const novoNomeTrim = novoNome.trim();
+
+      console.log(`\n=== ATUALIZAR NOME ===`);
+      console.log(`Dispositivo atual: "${dispositivoAtual}"`);
+      console.log(`Novo nome: "${novoNomeTrim}"`);
+
       const client = connectMQTT();
       const commandId = `atualizar_nome_${Date.now()}`;
       
       let responded = false;
       const timeout = setTimeout(() => {
         if (!responded) {
-          // Mesmo com timeout, atualiza o banco
-          silo.nome = novoNome.trim();
+          // Atualiza apenas o banco
+          const nomeAntigo = silo.nome;
+          silo.nome = novoNomeTrim;
+          silo.dispositivo = novoNomeTrim; // ✅ Atualiza também o dispositivo
           silo.save();
           
           res.status(200).json({
@@ -385,6 +442,10 @@ export class MQTTProvisioningController {
               id: silo._id,
               nome: silo.nome,
               dispositivo: silo.dispositivo
+            },
+            debug: {
+              nomeAntigo,
+              dispositivoEnviado: dispositivoAtual
             }
           });
         }
@@ -394,14 +455,17 @@ export class MQTTProvisioningController {
         if (topic === 'gateway/resposta/atualizar_nome') {
           try {
             const data = JSON.parse(message.toString());
+            console.log('Resposta atualizar_nome recebida:', data);
+            
             if (data.id === commandId) {
               responded = true;
               clearTimeout(timeout);
               client.off('message', handler);
               
               if (data.status === 'atualizado' || data.status === 'ok') {
-                // Atualiza banco
-                silo.nome = novoNome.trim();
+                const nomeAntigo = silo.nome;
+                silo.nome = novoNomeTrim;
+                silo.dispositivo = novoNomeTrim; // ✅ Sincroniza
                 silo.save();
 
                 res.status(200).json({
@@ -411,6 +475,10 @@ export class MQTTProvisioningController {
                     id: silo._id,
                     nome: silo.nome,
                     dispositivo: silo.dispositivo
+                  },
+                  debug: {
+                    nomeAntigo,
+                    novoNome: novoNomeTrim
                   }
                 });
               } else {
@@ -429,15 +497,19 @@ export class MQTTProvisioningController {
 
       client.on('message', handler);
 
-      client.publish('gateway/comando', JSON.stringify({
+      const comando = {
         acao: 'atualizar_nome',
         id: commandId,
-        dispositivo: silo.dispositivo,
-        novoNome: novoNome.trim(),
+        dispositivo: dispositivoAtual,  // ✅ Nome ATUAL
+        novoNome: novoNomeTrim,
         timestamp: Date.now()
-      }));
+      };
 
-      console.log(`✓ Comando atualizar_nome enviado: ${silo.dispositivo} → ${novoNome}`);
+      console.log('Comando MQTT a enviar:', JSON.stringify(comando, null, 2));
+
+      client.publish('gateway/comando', JSON.stringify(comando));
+
+      console.log(`✓ Comando atualizar_nome enviado: "${dispositivoAtual}" → "${novoNomeTrim}"`);
 
     } catch (error) {
       console.error('Erro ao atualizar nome:', error);
@@ -457,7 +529,14 @@ export class MQTTProvisioningController {
         mqtt: {
           connected: client.connected,
           broker: MQTT_BROKER
-        }
+        },
+        comandos: [
+          { acao: 'ping', descricao: 'Verifica se o gateway está online' },
+          { acao: 'scan', descricao: 'Escaneia dispositivos BLE disponíveis' },
+          { acao: 'provisionar', descricao: 'Provisiona um novo silo via BLE' },
+          { acao: 'desintegrar', descricao: 'Reseta um silo (volta para modo SETUP)' },
+          { acao: 'atualizar_nome', descricao: 'Atualiza o nome de um silo integrado' }
+        ]
       });
       
     } catch (error) {
