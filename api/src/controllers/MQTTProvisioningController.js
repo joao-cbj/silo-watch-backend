@@ -169,7 +169,7 @@ export class MQTTProvisioningController {
 
       const client = connectMQTT();
       const commandId = `provision_${Date.now()}`;
-      const dispositivoId = silo.nome.replace(/\s+/g, '_');
+      const dispositivoId = silo.nome.trim(); 
       
       let responded = false;
       const timeout = setTimeout(() => {
