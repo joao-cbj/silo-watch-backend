@@ -24,27 +24,29 @@ app.get("/api/auth/verificar", autenticar, AuthController.verificarToken);
 app.get('/api/mqtt-provisioning/status', autenticar, MQTTProvisioningController.status);
 app.post('/api/mqtt-provisioning/scan', autenticar, MQTTProvisioningController.scan);
 app.post('/api/mqtt-provisioning/provision', autenticar, MQTTProvisioningController.provision);
+app.post('/api/mqtt-provisioning/desintegrar', autenticar, MQTTProvisioningController.desintegrar); // ✨ NOVA
+app.post('/api/mqtt-provisioning/atualizar-nome', autenticar, MQTTProvisioningController.atualizarNome); // ✨ NOVA
 app.get('/api/mqtt-provisioning/info', autenticar, MQTTProvisioningController.listarComandos);
 
 // ===== ROTAS DE SILOS =====
 // IMPORTANTE: Rota específica ANTES da rota com parâmetro
-app.get("/api/silos/estatisticas", autenticar, SiloController.estatisticas); // silos ativos e inativos
+app.get("/api/silos/estatisticas", autenticar, SiloController.estatisticas);
 app.get("/api/silos/config/:dispositivo", SiloController.buscarConfiguracao); // Sem autenticação para ESP32
 
 app.get("/api/silos", autenticar, SiloController.listar);
 app.get("/api/silos/:id", autenticar, SiloController.buscarPorId);
 app.post("/api/silos", autenticar, validarSilo, SiloController.criar);
-app.put("/api/silos/:id", autenticar, validarAtualizacaoSilo, SiloController.atualizar);
-app.delete("/api/silos/:id", autenticar, SiloController.deletar); // (deleta dados em cascata)
+app.put("/api/silos/:id", autenticar, validarAtualizacaoSilo, SiloController.atualizar); // ✨ ATUALIZADA (envia comando ESP32)
+app.delete("/api/silos/:id", autenticar, SiloController.deletar); // ✨ ATUALIZADA (envia comando reset)
 
 // ===== ROTAS DE DADOS ESP32 =====
 app.get("/api/dados/exportar", autenticar, DadosController.exportar);
-app.get("/api/dados/ultimas", autenticar, DadosController.ultimasLeituras); // (inner join)
+app.get("/api/dados/ultimas", autenticar, DadosController.ultimasLeituras);
 app.get("/api/dados/historico/:dispositivo", autenticar, DadosController.buscarHistorico);
 app.get("/api/dados", autenticar, DadosController.listar);
 app.get("/api/dados/:dispositivoId", autenticar, DadosController.listarPorDispositivo);
 app.post("/api/dados", validarDados, DadosController.criar); // Sem autenticação para ESP32
-app.delete("/api/dados/:dispositivo", autenticar, DadosController.deletarPorDispositivo); // ✨ NOVA
+app.delete("/api/dados/:dispositivo", autenticar, DadosController.deletarPorDispositivo);
 
 // ===== ROTAS DE USUÁRIOS =====
 app.post("/api/usuarios", autenticar, UsuarioController.criar);

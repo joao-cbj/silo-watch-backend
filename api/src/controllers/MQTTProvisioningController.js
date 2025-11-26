@@ -1,7 +1,7 @@
 import mqtt from 'mqtt';
 import Silo from '../models/Silo.js';
 
-const MQTT_BROKER = process.env.MQTT_BROKER ;
+const MQTT_BROKER = process.env.MQTT_BROKER;
 const MQTT_USER = process.env.MQTT_USER;
 const MQTT_PASS = process.env.MQTT_PASS;
 
@@ -234,6 +234,213 @@ export class MQTTProvisioningController {
 
     } catch (error) {
       console.error('Erro ao provisionar:', error);
+      res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    }
+  }
+
+  // ✨ NOVO: Desintegrar silo (reset via ESP-NOW)
+  static async desintegrar(req, res) {
+    try {
+      const { siloId } = req.body;
+
+      if (!siloId) {
+        return res.status(400).json({
+          success: false,
+          error: 'siloId é obrigatório'
+        });
+      }
+
+      const silo = await Silo.findById(siloId);
+
+      if (!silo) {
+        return res.status(404).json({
+          success: false,
+          error: 'Silo não encontrado'
+        });
+      }
+
+      if (!silo.integrado) {
+        return res.status(400).json({
+          success: false,
+          error: 'Este silo não está integrado'
+        });
+      }
+
+      const client = connectMQTT();
+      const commandId = `desintegrar_${Date.now()}`;
+      
+      let responded = false;
+      const timeout = setTimeout(() => {
+        if (!responded) {
+          res.status(408).json({
+            success: false,
+            error: 'Timeout: Gateway não respondeu'
+          });
+        }
+      }, 20000);
+
+      const handler = (topic, message) => {
+        if (topic === 'gateway/resposta/desintegrar') {
+          try {
+            const data = JSON.parse(message.toString());
+            if (data.id === commandId) {
+              responded = true;
+              clearTimeout(timeout);
+              client.off('message', handler);
+              
+              if (data.status === 'reset_enviado' || data.status === 'ok') {
+                // Atualiza banco
+                silo.dispositivo = null;
+                silo.integrado = false;
+                silo.save();
+
+                res.status(200).json({
+                  success: true,
+                  message: 'Comando de reset enviado. ESP32 reiniciará em modo SETUP.',
+                  silo: {
+                    id: silo._id,
+                    nome: silo.nome,
+                    integrado: false
+                  }
+                });
+              } else {
+                res.status(400).json({
+                  success: false,
+                  error: data.error || 'Erro ao desintegrar',
+                  status: data.status
+                });
+              }
+            }
+          } catch (e) {
+            console.error('Erro ao parsear desintegrar:', e);
+          }
+        }
+      };
+
+      client.on('message', handler);
+
+      client.publish('gateway/comando', JSON.stringify({
+        acao: 'desintegrar',
+        id: commandId,
+        dispositivo: silo.dispositivo,
+        timestamp: Date.now()
+      }));
+
+      console.log(`✓ Comando desintegrar enviado: ${silo.nome} (${silo.dispositivo})`);
+
+    } catch (error) {
+      console.error('Erro ao desintegrar:', error);
+      res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    }
+  }
+
+  // ✨ NOVO: Atualizar nome do silo (sincroniza com ESP32)
+  static async atualizarNome(req, res) {
+    try {
+      const { siloId, novoNome } = req.body;
+
+      if (!siloId || !novoNome) {
+        return res.status(400).json({
+          success: false,
+          error: 'siloId e novoNome são obrigatórios'
+        });
+      }
+
+      const silo = await Silo.findById(siloId);
+
+      if (!silo) {
+        return res.status(404).json({
+          success: false,
+          error: 'Silo não encontrado'
+        });
+      }
+
+      if (!silo.integrado) {
+        return res.status(400).json({
+          success: false,
+          error: 'Silo não está integrado'
+        });
+      }
+
+      const client = connectMQTT();
+      const commandId = `atualizar_nome_${Date.now()}`;
+      
+      let responded = false;
+      const timeout = setTimeout(() => {
+        if (!responded) {
+          // Mesmo com timeout, atualiza o banco
+          silo.nome = novoNome.trim();
+          silo.save();
+          
+          res.status(200).json({
+            success: true,
+            message: 'Nome atualizado no banco. Aviso: ESP32 pode não ter recebido.',
+            silo: {
+              id: silo._id,
+              nome: silo.nome,
+              dispositivo: silo.dispositivo
+            }
+          });
+        }
+      }, 20000);
+
+      const handler = (topic, message) => {
+        if (topic === 'gateway/resposta/atualizar_nome') {
+          try {
+            const data = JSON.parse(message.toString());
+            if (data.id === commandId) {
+              responded = true;
+              clearTimeout(timeout);
+              client.off('message', handler);
+              
+              if (data.status === 'atualizado' || data.status === 'ok') {
+                // Atualiza banco
+                silo.nome = novoNome.trim();
+                silo.save();
+
+                res.status(200).json({
+                  success: true,
+                  message: 'Nome atualizado no banco e no ESP32',
+                  silo: {
+                    id: silo._id,
+                    nome: silo.nome,
+                    dispositivo: silo.dispositivo
+                  }
+                });
+              } else {
+                res.status(400).json({
+                  success: false,
+                  error: data.error || 'Erro ao atualizar nome no ESP32',
+                  status: data.status
+                });
+              }
+            }
+          } catch (e) {
+            console.error('Erro ao parsear atualizar_nome:', e);
+          }
+        }
+      };
+
+      client.on('message', handler);
+
+      client.publish('gateway/comando', JSON.stringify({
+        acao: 'atualizar_nome',
+        id: commandId,
+        dispositivo: silo.dispositivo,
+        novoNome: novoNome.trim(),
+        timestamp: Date.now()
+      }));
+
+      console.log(`✓ Comando atualizar_nome enviado: ${silo.dispositivo} → ${novoNome}`);
+
+    } catch (error) {
+      console.error('Erro ao atualizar nome:', error);
       res.status(500).json({
         success: false,
         error: error.message
