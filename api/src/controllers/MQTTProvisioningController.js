@@ -140,6 +140,7 @@ export class MQTTProvisioningController {
     }
   }
 
+  // ✅ CORRIGIDO: Salva MAC Address durante provisionamento
   static async provision(req, res) {
     try {
       const { siloId, macSilo } = req.body;
@@ -167,9 +168,14 @@ export class MQTTProvisioningController {
         });
       }
 
+      console.log(`\n=== PROVISIONAR SILO ===`);
+      console.log(`ID: ${siloId}`);
+      console.log(`Nome: ${silo.nome}`);
+      console.log(`MAC: ${macSilo}`);
+
       const client = connectMQTT();
       const commandId = `provision_${Date.now()}`;
-      const dispositivoId = silo.nome.trim(); // ✅ Mantém espaços
+      const dispositivoId = silo.nome.trim();
       
       let responded = false;
       const timeout = setTimeout(() => {
@@ -191,9 +197,16 @@ export class MQTTProvisioningController {
               client.off('message', handler);
               
               if (data.status === 'provisionado') {
+                // ✅ CORREÇÃO: Salva MAC Address junto com dispositivo
                 silo.dispositivo = dispositivoId;
+                silo.macAddress = macSilo.toUpperCase();
                 silo.integrado = true;
                 silo.save();
+
+                console.log(`✓ Silo provisionado:`);
+                console.log(`  Nome: ${silo.nome}`);
+                console.log(`  Dispositivo: ${dispositivoId}`);
+                console.log(`  MAC: ${silo.macAddress}`);
 
                 res.status(200).json({
                   success: true,
@@ -202,6 +215,7 @@ export class MQTTProvisioningController {
                     id: silo._id,
                     nome: silo.nome,
                     dispositivo: dispositivoId,
+                    macAddress: silo.macAddress,
                     integrado: true
                   }
                 });
@@ -241,7 +255,7 @@ export class MQTTProvisioningController {
     }
   }
 
-  // ✨ NOVO: Desintegrar silo (reset via ESP-NOW)
+  // ✅ CORRIGIDO: Usa MAC Address para desintegrar
   static async desintegrar(req, res) {
     try {
       const { siloId } = req.body;
@@ -269,11 +283,17 @@ export class MQTTProvisioningController {
         });
       }
 
-      // ✅ Verifica se tem MAC Address
+      console.log(`\n=== DESINTEGRAR SILO ===`);
+      console.log(`ID: ${siloId}`);
+      console.log(`Nome: ${silo.nome}`);
+      console.log(`Dispositivo: ${silo.dispositivo}`);
+      console.log(`MAC Address: ${silo.macAddress}`);
+
+      // ✅ VERIFICAÇÃO: MAC Address obrigatório
       if (!silo.macAddress) {
         return res.status(400).json({
           success: false,
-          error: 'MAC Address não encontrado. Re-integre o silo.'
+          error: 'MAC Address não encontrado. Re-integre o silo para registrar o MAC.'
         });
       }
 
@@ -294,6 +314,8 @@ export class MQTTProvisioningController {
         if (topic === 'gateway/resposta/desintegrar') {
           try {
             const data = JSON.parse(message.toString());
+            console.log('Resposta desintegrar:', data);
+            
             if (data.id === commandId) {
               responded = true;
               clearTimeout(timeout);
@@ -302,9 +324,11 @@ export class MQTTProvisioningController {
               if (data.status === 'reset_enviado' || data.status === 'ok') {
                 // Atualiza banco
                 silo.dispositivo = null;
-                silo.macAddress = null; // ✨ Limpa MAC também
+                silo.macAddress = null;
                 silo.integrado = false;
                 silo.save();
+
+                console.log(`✓ Silo desintegrado com sucesso`);
 
                 res.status(200).json({
                   success: true,
@@ -331,16 +355,20 @@ export class MQTTProvisioningController {
 
       client.on('message', handler);
 
-      // ✅ Envia MAC ao invés do nome
-      client.publish('gateway/comando', JSON.stringify({
+      // ✅ ENVIA MAC ADDRESS
+      const comando = {
         acao: 'desintegrar',
         id: commandId,
-        macSilo: silo.macAddress, // ✨ USA MAC
-        dispositivo: silo.dispositivo, // Nome para log
+        macSilo: silo.macAddress,
+        dispositivo: silo.dispositivo,
         timestamp: Date.now()
-      }));
+      };
 
-      console.log(`✓ Comando desintegrar enviado: ${silo.nome} (MAC: ${silo.macAddress})`);
+      console.log('Comando MQTT:', JSON.stringify(comando, null, 2));
+
+      client.publish('gateway/comando', JSON.stringify(comando));
+
+      console.log(`✓ Comando desintegrar enviado para MAC: ${silo.macAddress}`);
 
     } catch (error) {
       console.error('Erro ao desintegrar:', error);
@@ -351,7 +379,7 @@ export class MQTTProvisioningController {
     }
   }
 
-  // ✨ NOVO: Atualizar nome do silo (sincroniza com ESP32)
+  // ✅ CORRIGIDO: Usa MAC Address para atualizar nome
   static async atualizarNome(req, res) {
     try {
       const { siloId, novoNome } = req.body;
@@ -379,7 +407,12 @@ export class MQTTProvisioningController {
         });
       }
 
-      // ✅ Verifica se tem MAC
+      console.log(`\n=== ATUALIZAR NOME ===`);
+      console.log(`Silo: ${silo.nome}`);
+      console.log(`MAC: ${silo.macAddress}`);
+      console.log(`Novo nome: ${novoNome}`);
+
+      // ✅ VERIFICAÇÃO: MAC Address obrigatório
       if (!silo.macAddress) {
         return res.status(400).json({
           success: false,
@@ -393,8 +426,9 @@ export class MQTTProvisioningController {
       let responded = false;
       const timeout = setTimeout(() => {
         if (!responded) {
-          // Mesmo com timeout, atualiza o banco
+          // Atualiza apenas o banco
           silo.nome = novoNome.trim();
+          silo.dispositivo = novoNome.trim();
           silo.save();
           
           res.status(200).json({
@@ -413,14 +447,16 @@ export class MQTTProvisioningController {
         if (topic === 'gateway/resposta/atualizar_nome') {
           try {
             const data = JSON.parse(message.toString());
+            console.log('Resposta atualizar_nome:', data);
+            
             if (data.id === commandId) {
               responded = true;
               clearTimeout(timeout);
               client.off('message', handler);
               
               if (data.status === 'atualizado' || data.status === 'ok') {
-                // Atualiza banco
                 silo.nome = novoNome.trim();
+                silo.dispositivo = novoNome.trim();
                 silo.save();
 
                 res.status(200).json({
@@ -448,17 +484,21 @@ export class MQTTProvisioningController {
 
       client.on('message', handler);
 
-      // ✅ Envia MAC ao invés do nome
-      client.publish('gateway/comando', JSON.stringify({
+      // ✅ ENVIA MAC ADDRESS
+      const comando = {
         acao: 'atualizar_nome',
         id: commandId,
-        macSilo: silo.macAddress, // ✨ USA MAC
-        dispositivo: silo.dispositivo, // Nome atual (para log)
+        macSilo: silo.macAddress,
+        dispositivo: silo.dispositivo,
         novoNome: novoNome.trim(),
         timestamp: Date.now()
-      }));
+      };
 
-      console.log(`✓ Comando atualizar_nome enviado: MAC ${silo.macAddress} → ${novoNome}`);
+      console.log('Comando MQTT:', JSON.stringify(comando, null, 2));
+
+      client.publish('gateway/comando', JSON.stringify(comando));
+
+      console.log(`✓ Comando atualizar_nome enviado para MAC: ${silo.macAddress}`);
 
     } catch (error) {
       console.error('Erro ao atualizar nome:', error);
@@ -478,7 +518,14 @@ export class MQTTProvisioningController {
         mqtt: {
           connected: client.connected,
           broker: MQTT_BROKER
-        }
+        },
+        comandos: [
+          { acao: 'ping', descricao: 'Verifica se o gateway está online' },
+          { acao: 'scan', descricao: 'Escaneia dispositivos BLE disponíveis' },
+          { acao: 'provisionar', descricao: 'Provisiona um novo silo via BLE' },
+          { acao: 'desintegrar', descricao: 'Reseta um silo (volta para modo SETUP)' },
+          { acao: 'atualizar_nome', descricao: 'Atualiza o nome de um silo integrado' }
+        ]
       });
       
     } catch (error) {
