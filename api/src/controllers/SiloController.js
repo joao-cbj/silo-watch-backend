@@ -22,7 +22,7 @@ function getMQTTClient() {
     });
 
     mqttClient.on('connect', () => {
-      console.log('✓ MQTT Client (SiloController) conectado');
+      console.log('✓ MQTT Client conectado');
     });
 
     mqttClient.on('error', (err) => {
@@ -97,7 +97,7 @@ export class SiloController {
       const { id } = req.params;
       const { nome, tipoSilo } = req.body;
       
-      console.log(`\n=== ATUALIZAR SILO (SiloController) ===`);
+      console.log(`\n=== ATUALIZAR SILO ===`);
       console.log(`ID: ${id}`);
       console.log(`Novo nome: ${nome}`);
       
@@ -150,7 +150,7 @@ export class SiloController {
               mqttEnviado: true
             });
           } else {
-            console.warn('⚠️ MQTT offline');
+            console.warn('MQTT offline');
             res.status(200).json({ 
               success: true, 
               message: "Silo atualizado no banco. MQTT offline.", 
@@ -160,7 +160,7 @@ export class SiloController {
             });
           }
         } else {
-          console.warn('⚠️ MAC Address não encontrado');
+          console.warn('MAC Address não encontrado');
           res.status(200).json({ 
             success: true, 
             message: "Silo atualizado no banco. MAC não encontrado.", 
@@ -186,12 +186,12 @@ export class SiloController {
     }
   }
 
-  // ✅ CORRIGIDO: Deleta silo + envia comando via MAC Address
+  // Deleta silo + envia comando via MAC Address
   static async deletar(req, res) {
     try {
       const { id } = req.params;
       
-      console.log(`\n=== DELETAR SILO (SiloController) ===`);
+      console.log(`\n=== DELETAR SILO ===`);
       console.log(`ID: ${id}`);
       
       const silo = await service.buscarPorId(id);
@@ -212,7 +212,7 @@ export class SiloController {
             const comando = {
               acao: 'desintegrar',
               id: `delete_${Date.now()}`,
-              macSilo: silo.macAddress,        // ✅ USA MAC!
+              macSilo: silo.macAddress,
               dispositivo: silo.dispositivo,
               timestamp: Date.now()
             };
@@ -224,7 +224,7 @@ export class SiloController {
             
             console.log(`✓ Comando reset enviado para MAC: ${silo.macAddress}`);
           } else {
-            console.warn('⚠️ MQTT desconectado');
+            console.warn('MQTT desconectado');
             erroMQTT = 'MQTT desconectado';
           }
         } catch (mqttError) {
@@ -232,7 +232,7 @@ export class SiloController {
           erroMQTT = mqttError.message;
         }
       } else if (silo.integrado && !silo.macAddress) {
-        console.warn('⚠️ Silo integrado mas sem MAC Address salvo');
+        console.warn('Silo integrado mas sem MAC Address salvo');
         erroMQTT = 'MAC Address não encontrado';
       }
       
