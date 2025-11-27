@@ -14,16 +14,18 @@ const SiloSchema = new mongoose.Schema({
   dispositivo: { 
     type: String, 
     unique: true,
-    sparse: true,
-    trim: true
+    sparse: true,  // Permite múltiplos valores null
+    trim: true,
+    index: true 
   },
-  // ✨ NOVO: Campo para MAC Address do ESP32
+  // Campo para MAC Address do ESP32
   macAddress: {
     type: String,
     unique: true,
-    sparse: true,
+    sparse: true,  // Permite múltiplos valores null
     uppercase: true,
     trim: true,
+    index: true,   
     validate: {
       validator: function(v) {
         // Valida formato MAC: XX:XX:XX:XX:XX:XX
@@ -48,8 +50,7 @@ const SiloSchema = new mongoose.Schema({
   timestamps: { createdAt: 'criadoEm', updatedAt: 'atualizadoEm' }
 });
 
-// Índices para busca rápida
-SiloSchema.index({ dispositivo: 1 });
-SiloSchema.index({ macAddress: 1 }); // ✨ NOVO
+
+SiloSchema.index({ integrado: 1, dispositivo: 1 });
 
 export default mongoose.models.Silo || mongoose.model("Silo", SiloSchema);
