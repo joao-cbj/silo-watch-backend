@@ -20,6 +20,14 @@ function getMQTTClient() {
       clean: true,
       reconnectPeriod: 5000
     });
+
+    mqttClient.on('connect', () => {
+      console.log('✓ MQTT Client (SiloController) conectado');
+    });
+
+    mqttClient.on('error', (err) => {
+      console.error('✗ MQTT Client erro:', err);
+    });
   }
   return mqttClient;
 }
@@ -34,6 +42,7 @@ export class SiloController {
         data: silo 
       });
     } catch (err) {
+      console.error('Erro ao criar silo:', err);
       res.status(400).json({ 
         success: false, 
         error: err.message 
@@ -55,6 +64,7 @@ export class SiloController {
         ...resultado 
       });
     } catch (err) {
+      console.error('Erro ao listar silos:', err);
       res.status(500).json({ 
         success: false, 
         error: err.message 
@@ -72,6 +82,7 @@ export class SiloController {
         data: silo 
       });
     } catch (err) {
+      console.error('Erro ao buscar silo:', err);
       const status = err.message === "Silo não encontrado" ? 404 : 500;
       res.status(status).json({ 
         success: false, 
@@ -80,26 +91,31 @@ export class SiloController {
     }
   }
 
-  // ✨ ATUALIZADO: Atualiza silo + envia comando para ESP32 + atualiza dados históricos
+  // Atualiza silo + envia comando via MAC Address
   static async atualizar(req, res) {
     try {
       const { id } = req.params;
       const { nome, tipoSilo } = req.body;
       
-      // Busca o silo atual
+      console.log(`\n=== ATUALIZAR SILO (SiloController) ===`);
+      console.log(`ID: ${id}`);
+      console.log(`Novo nome: ${nome}`);
+      
       const siloAtual = await service.buscarPorId(id);
+      console.log(`Silo atual: ${siloAtual.nome}`);
+      console.log(`MAC: ${siloAtual.macAddress}`);
       
-      // Verifica se houve mudança no nome
-      const nomeAlterado = nome && nome !== siloAtual.nome;
+      const nomeAlterado = nome && nome.trim() !== siloAtual.nome;
       
-      // Atualiza o silo no banco
       const silo = await service.atualizar(id, req.body);
+      console.log(`✓ Silo atualizado no banco`);
       
       // Se nome foi alterado E silo está integrado
       if (nomeAlterado && siloAtual.integrado && siloAtual.dispositivo) {
+        console.log(`✓ Nome alterado - sincronizando...`);
         
-        // 1️⃣ Atualiza todos os dados históricos
-        const novoDispositivo = nome.replace(/\s+/g, '_');
+        // 1️⃣ Atualiza dados históricos
+        const novoDispositivo = nome.trim();
         const resultadoDados = await Dados.updateMany(
           { dispositivo: siloAtual.dispositivo },
           { $set: { dispositivo: novoDispositivo } }
@@ -107,27 +123,52 @@ export class SiloController {
         
         console.log(`✓ ${resultadoDados.modifiedCount} leituras atualizadas`);
         
-        // 2️⃣ Envia comando via MQTT para Gateway
-        const client = getMQTTClient();
-        
-        if (client.connected) {
-          client.publish('gateway/comando', JSON.stringify({
-            acao: 'atualizar_nome',
-            id: `update_${Date.now()}`,
-            dispositivo: siloAtual.dispositivo,
-            novoNome: nome.trim(),
-            timestamp: Date.now()
-          }));
+        // 2️⃣ Envia comando via MQTT usando MAC Address
+        if (siloAtual.macAddress) {
+          const client = getMQTTClient();
           
-          console.log(`✓ Comando atualizar_nome enviado: ${siloAtual.dispositivo} → ${nome}`);
+          if (client.connected) {
+            const comando = {
+              acao: 'atualizar_nome',
+              id: `update_${Date.now()}`,
+              macSilo: siloAtual.macAddress,  
+              dispositivo: siloAtual.dispositivo,
+              novoNome: nome.trim(),
+              timestamp: Date.now()
+            };
+            
+            console.log('Comando MQTT:', JSON.stringify(comando, null, 2));
+            client.publish('gateway/comando', JSON.stringify(comando));
+            
+            console.log(`✓ Comando enviado para MAC: ${siloAtual.macAddress}`);
+            
+            res.status(200).json({ 
+              success: true, 
+              message: "Silo e dados atualizados. Comando enviado ao ESP32.", 
+              data: silo,
+              dadosAtualizados: resultadoDados.modifiedCount,
+              mqttEnviado: true
+            });
+          } else {
+            console.warn('⚠️ MQTT offline');
+            res.status(200).json({ 
+              success: true, 
+              message: "Silo atualizado no banco. MQTT offline.", 
+              data: silo,
+              dadosAtualizados: resultadoDados.modifiedCount,
+              mqttEnviado: false
+            });
+          }
+        } else {
+          console.warn('⚠️ MAC Address não encontrado');
+          res.status(200).json({ 
+            success: true, 
+            message: "Silo atualizado no banco. MAC não encontrado.", 
+            data: silo,
+            dadosAtualizados: resultadoDados.modifiedCount,
+            mqttEnviado: false
+          });
         }
-        
-        res.status(200).json({ 
-          success: true, 
-          message: "Silo e dados atualizados. Comando enviado ao ESP32.", 
-          data: silo,
-          dadosAtualizados: resultadoDados.modifiedCount
-        });
       } else {
         res.status(200).json({ 
           success: true, 
@@ -136,6 +177,7 @@ export class SiloController {
         });
       }
     } catch (err) {
+      console.error('Erro ao atualizar silo:', err);
       const status = err.message === "Silo não encontrado" ? 404 : 400;
       res.status(status).json({ 
         success: false, 
@@ -144,52 +186,90 @@ export class SiloController {
     }
   }
 
-  // ✨ ATUALIZADO: Deleta silo + dados + envia comando reset para ESP32
+  // ✅ CORRIGIDO: Deleta silo + envia comando via MAC Address
   static async deletar(req, res) {
     try {
       const { id } = req.params;
       
-      // Busca o silo primeiro
+      console.log(`\n=== DELETAR SILO (SiloController) ===`);
+      console.log(`ID: ${id}`);
+      
       const silo = await service.buscarPorId(id);
+      console.log(`Silo: ${silo.nome}`);
+      console.log(`Dispositivo: ${silo.dispositivo}`);
+      console.log(`MAC: ${silo.macAddress}`);
+      console.log(`Integrado: ${silo.integrado}`);
+      
+      let mqttEnviado = false;
+      let erroMQTT = null;
       
       // Se silo está integrado, envia comando de reset
-      if (silo.integrado && silo.dispositivo) {
-        const client = getMQTTClient();
-        
-        if (client.connected) {
-          client.publish('gateway/comando', JSON.stringify({
-            acao: 'desintegrar',
-            id: `delete_${Date.now()}`,
-            dispositivo: silo.dispositivo,
-            timestamp: Date.now()
-          }));
+      if (silo.integrado && silo.macAddress) {
+        try {
+          const client = getMQTTClient();
           
-          console.log(`✓ Comando desintegrar enviado ao deletar: ${silo.dispositivo}`);
+          if (client.connected) {
+            const comando = {
+              acao: 'desintegrar',
+              id: `delete_${Date.now()}`,
+              macSilo: silo.macAddress,        // ✅ USA MAC!
+              dispositivo: silo.dispositivo,
+              timestamp: Date.now()
+            };
+            
+            console.log('Comando MQTT:', JSON.stringify(comando, null, 2));
+            
+            client.publish('gateway/comando', JSON.stringify(comando));
+            mqttEnviado = true;
+            
+            console.log(`✓ Comando reset enviado para MAC: ${silo.macAddress}`);
+          } else {
+            console.warn('⚠️ MQTT desconectado');
+            erroMQTT = 'MQTT desconectado';
+          }
+        } catch (mqttError) {
+          console.error('✗ Erro MQTT:', mqttError);
+          erroMQTT = mqttError.message;
         }
+      } else if (silo.integrado && !silo.macAddress) {
+        console.warn('⚠️ Silo integrado mas sem MAC Address salvo');
+        erroMQTT = 'MAC Address não encontrado';
       }
       
       // Deleta dados históricos
       let dadosDeletados = 0;
       if (silo.dispositivo) {
-        const resultado = await Dados.deleteMany({ 
-          dispositivo: silo.dispositivo 
-        });
-        dadosDeletados = resultado.deletedCount;
+        try {
+          const resultado = await Dados.deleteMany({ 
+            dispositivo: silo.dispositivo 
+          });
+          dadosDeletados = resultado.deletedCount;
+          console.log(`✓ ${dadosDeletados} leituras deletadas`);
+        } catch (dadosError) {
+          console.error('✗ Erro ao deletar dados:', dadosError);
+        }
       }
       
       // Deleta o silo
       await service.deletar(id);
+      console.log(`✓ Silo deletado do banco`);
       
       res.status(200).json({ 
         success: true, 
-        message: "Silo deletado. Comando de reset enviado ao ESP32.",
-        dadosDeletados: dadosDeletados
+        message: mqttEnviado 
+          ? "Silo deletado. Comando de reset enviado ao ESP32."
+          : "Silo deletado. " + (erroMQTT ? `Aviso: ${erroMQTT}` : "Não estava integrado."),
+        dadosDeletados: dadosDeletados,
+        mqttEnviado: mqttEnviado,
+        erroMQTT: erroMQTT
       });
     } catch (err) {
+      console.error('Erro ao deletar silo:', err);
       const status = err.message === "Silo não encontrado" ? 404 : 500;
       res.status(status).json({ 
         success: false, 
-        error: err.message 
+        error: err.message,
+        stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
       });
     }
   }
@@ -212,10 +292,12 @@ export class SiloController {
         data: {
           nome: silo.nome,
           dispositivo: silo.dispositivo,
-          integrado: silo.integrado
+          integrado: silo.integrado,
+          macAddress: silo.macAddress
         }
       });
     } catch (err) {
+      console.error('Erro ao buscar configuração:', err);
       res.status(500).json({ 
         success: false, 
         error: err.message 
@@ -232,6 +314,7 @@ export class SiloController {
         data: stats 
       });
     } catch (err) {
+      console.error('Erro ao obter estatísticas:', err);
       res.status(500).json({ 
         success: false, 
         error: err.message 
