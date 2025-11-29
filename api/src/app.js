@@ -25,7 +25,6 @@ app.get('/api/mqtt-provisioning/status', autenticar, MQTTProvisioningController.
 app.post('/api/mqtt-provisioning/scan', autenticar, MQTTProvisioningController.scan);
 app.post('/api/mqtt-provisioning/provision', autenticar, MQTTProvisioningController.provision);
 app.post('/api/mqtt-provisioning/desintegrar', autenticar, MQTTProvisioningController.desintegrar); 
-app.post('/api/mqtt-provisioning/atualizar-nome', autenticar, MQTTProvisioningController.atualizarNome); 
 app.get('/api/mqtt-provisioning/info', autenticar, MQTTProvisioningController.listarComandos);
 
 // ===== ROTAS DE SILOS =====
