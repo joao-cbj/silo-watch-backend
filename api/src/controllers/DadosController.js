@@ -6,7 +6,6 @@ import Silo from "../models/Silo.js";
 const service = new DadosService();
 
 export class DadosController {
-  // ==================== MÉTODOS EXISTENTES (mantidos) ====================
 
   static async criar(req, res) {
     try {
@@ -17,7 +16,7 @@ export class DadosController {
     }
   }
 
-  // Para o DASHBOARD - última leitura de cada dispositivo
+  // ultima leitura de cada dispositivo
   static async listar(req, res) {
     try {
       const { limite = 50, dispositivo } = req.query;
@@ -102,12 +101,10 @@ export class DadosController {
     }
   }
 
-  // ==================== MÉTODOS ATUALIZADOS ====================
-
-  // ✨ ATUALIZADO: Última leitura de cada dispositivo COM INNER JOIN (para dashboard)
+  // Agora faz join usando _id do Silo (armazenado em dispositivo)
   static async ultimasLeituras(req, res) {
     try {
-      // Agrupa os dados por dispositivo e pega o mais recente
+      // Agrupa os dados por dispositivo (_id do silo) e pega o mais recente
       const ultimasDados = await Dados.aggregate([
         {
           $sort: { timestamp: -1 }
@@ -126,22 +123,24 @@ export class DadosController {
       const silosIntegrados = await Silo.find({ integrado: true }).lean();
 
       // Faz o "INNER JOIN" manual - apenas silos com dados E cadastrados
+      // MUDANÇA: Agora faz match pelo _id do silo
       const dadosComSilo = ultimasDados
         .map(dado => {
-          const silo = silosIntegrados.find(s => s.dispositivo === dado._id);
+          const silo = silosIntegrados.find(s => s._id.toString() === dado._id);
           
           // INNER JOIN: só retorna se o silo existir
           if (!silo) return null;
           
           return {
             _id: silo._id,
-            dispositivo: dado._id,
+            dispositivo: silo._id.toString(), // O dispositivo agora é o _id
             nome: silo.nome,
             tipoSilo: silo.tipoSilo,
             temperatura: dado.temperatura,
             umidade: dado.umidade,
             timestamp: dado.timestamp,
-            integrado: true
+            integrado: true,
+            macAddress: silo.macAddress
           };
         })
         .filter(item => item !== null); // Remove itens sem silo correspondente
@@ -160,9 +159,7 @@ export class DadosController {
     }
   }
 
-  // ==================== NOVOS MÉTODOS ====================
-
-  // ✨ NOVO: Busca histórico de um dispositivo específico (método alternativo)
+  // Busca histórico de um dispositivo específico (método alternativo)
   static async buscarHistorico(req, res) {
     try {
       const { dispositivo } = req.params;
@@ -192,7 +189,7 @@ export class DadosController {
     }
   }
 
-  // ✨ NOVO: Deleta dados de um silo específico
+  // Deleta dados de um silo específico
   static async deletarPorDispositivo(req, res) {
     try {
       const { dispositivo } = req.params;

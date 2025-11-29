@@ -6,7 +6,7 @@ const MQTT_USER = process.env.MQTT_USER;
 const MQTT_PASS = process.env.MQTT_PASS;
 
 let mqttClient = null;
-const pendingRequests = new Map(); // Gerencia requisições pendentes
+const pendingRequests = new Map();
 
 function connectMQTT() {
   if (mqttClient && mqttClient.connected) return mqttClient;
@@ -30,13 +30,11 @@ function connectMQTT() {
     console.error('MQTT erro:', err);
   });
 
-  // Handler único centralizado
   mqttClient.on('message', (topic, message) => {
     try {
       const data = JSON.parse(message.toString());
       const commandId = data.id;
 
-      // Verifica se existe uma requisição pendente para este ID
       if (commandId && pendingRequests.has(commandId)) {
         const { resolve, timeout } = pendingRequests.get(commandId);
         clearTimeout(timeout);
@@ -51,7 +49,6 @@ function connectMQTT() {
   return mqttClient;
 }
 
-// Função helper para aguardar resposta MQTT
 function waitForMQTTResponse(commandId, timeoutMs = 20000) {
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
@@ -180,7 +177,9 @@ export class MQTTProvisioningController {
 
       const client = connectMQTT();
       const commandId = `provision_${Date.now()}`;
-      const dispositivoId = silo.nome.trim();
+      
+      // envia o _id do silo como dispositivo
+      const dispositivoId = silo._id.toString();
       
       const responsePromise = waitForMQTTResponse(commandId, 30000);
 
@@ -188,18 +187,20 @@ export class MQTTProvisioningController {
         acao: 'provisionar',
         id: commandId,
         macSilo: macSilo.toUpperCase(),
-        siloNome: silo.nome,
-        siloId: silo._id.toString(),
+        siloNome: silo.nome,  // Mantido para log/debug no gateway
+        siloId: dispositivoId,  // Agora envia o _id do silo
         timestamp: Date.now()
       }));
 
       console.log(`✓ Comando provision enviado: ${silo.nome} (${macSilo})`);
+      console.log(`✓ Dispositivo ID: ${dispositivoId}`);
 
       try {
         const { topic, data } = await responsePromise;
         
         if (topic === 'gateway/resposta/provision') {
           if (data.status === 'provisionado') {
+            // dispositivo agora é o _id do silo
             silo.dispositivo = dispositivoId;
             silo.macAddress = macSilo.toUpperCase();
             silo.integrado = true;
@@ -245,6 +246,7 @@ export class MQTTProvisioningController {
     }
   }
 
+  // Desintegrar atualiza o banco, não envia comando pra ESP
   static async desintegrar(req, res) {
     try {
       const { siloId } = req.body;
@@ -278,70 +280,23 @@ export class MQTTProvisioningController {
       console.log(`Dispositivo: ${silo.dispositivo}`);
       console.log(`MAC Address: ${silo.macAddress}`);
 
-      if (!silo.macAddress) {
-        return res.status(400).json({
-          success: false,
-          error: 'MAC Address não encontrado. Re-integre o silo para registrar o MAC.'
-        });
-      }
+      // Apenas atualiza banco, não envia comando
+      silo.dispositivo = null;
+      silo.macAddress = null;
+      silo.integrado = false;
+      await silo.save();
 
-      const client = connectMQTT();
-      const commandId = `desintegrar_${Date.now()}`;
-      
-      const responsePromise = waitForMQTTResponse(commandId, 20000);
+      console.log(`✓ Silo desintegrado no banco. Reset manual necessário no ESP32.`);
 
-      const comando = {
-        acao: 'desintegrar',
-        id: commandId,
-        macSilo: silo.macAddress,
-        dispositivo: silo.dispositivo,
-        timestamp: Date.now()
-      };
-
-      console.log('Comando MQTT:', JSON.stringify(comando, null, 2));
-
-      client.publish('gateway/comando', JSON.stringify(comando));
-
-      console.log(`✓ Comando desintegrar enviado para MAC: ${silo.macAddress}`);
-
-      try {
-        const { topic, data } = await responsePromise;
-        
-        if (topic === 'gateway/resposta/desintegrar') {
-          console.log('Resposta desintegrar:', data);
-          
-          if (data.status === 'enviado' || data.status === 'reset_enviado' || data.status === 'ok') {
-            // Atualiza banco
-            silo.dispositivo = null;
-            silo.macAddress = null;
-            silo.integrado = false;
-            await silo.save();
-
-            console.log(`✓ Silo desintegrado com sucesso`);
-
-            return res.status(200).json({
-              success: true,
-              message: 'Comando de reset enviado. ESP32 reiniciará em modo SETUP.',
-              silo: {
-                id: silo._id,
-                nome: silo.nome,
-                integrado: false
-              }
-            });
-          } else {
-            return res.status(400).json({
-              success: false,
-              error: data.error || 'Erro ao desintegrar',
-              status: data.status
-            });
-          }
+      return res.status(200).json({
+        success: true,
+        message: 'Silo desintegrado no sistema. Pressione o botão do ESP32 por 3 segundos para resetar a memória.',
+        silo: {
+          id: silo._id,
+          nome: silo.nome,
+          integrado: false
         }
-      } catch (error) {
-        return res.status(408).json({
-          success: false,
-          error: error.message
-        });
-      }
+      });
 
     } catch (error) {
       console.error('Erro ao desintegrar:', error);
@@ -352,118 +307,7 @@ export class MQTTProvisioningController {
     }
   }
 
-  static async atualizarNome(req, res) {
-    try {
-      const { siloId, novoNome } = req.body;
-
-      if (!siloId || !novoNome) {
-        return res.status(400).json({
-          success: false,
-          error: 'siloId e novoNome são obrigatórios'
-        });
-      }
-
-      const silo = await Silo.findById(siloId);
-
-      if (!silo) {
-        return res.status(404).json({
-          success: false,
-          error: 'Silo não encontrado'
-        });
-      }
-
-      if (!silo.integrado) {
-        return res.status(400).json({
-          success: false,
-          error: 'Silo não está integrado'
-        });
-      }
-
-      console.log(`\n=== ATUALIZAR NOME ===`);
-      console.log(`Silo: ${silo.nome}`);
-      console.log(`MAC: ${silo.macAddress}`);
-      console.log(`Novo nome: ${novoNome}`);
-
-      if (!silo.macAddress) {
-        return res.status(400).json({
-          success: false,
-          error: 'MAC Address não encontrado. Re-integre o silo.'
-        });
-      }
-
-      const client = connectMQTT();
-      const commandId = `atualizar_nome_${Date.now()}`;
-      
-      const responsePromise = waitForMQTTResponse(commandId, 20000);
-
-      const comando = {
-        acao: 'atualizar_nome',
-        id: commandId,
-        macSilo: silo.macAddress,
-        dispositivo: silo.dispositivo,
-        novoNome: novoNome.trim(),
-        timestamp: Date.now()
-      };
-
-      console.log('Comando MQTT:', JSON.stringify(comando, null, 2));
-
-      client.publish('gateway/comando', JSON.stringify(comando));
-
-      console.log(`✓ Comando atualizar_nome enviado para MAC: ${silo.macAddress}`);
-
-      try {
-        const { topic, data } = await responsePromise;
-        
-        if (topic === 'gateway/resposta/atualizar_nome') {
-          console.log('Resposta atualizar_nome:', data);
-          
-          if (data.status === 'enviado' || data.status === 'atualizado' || data.status === 'ok') {
-            silo.nome = novoNome.trim();
-            silo.dispositivo = novoNome.trim();
-            await silo.save();
-
-            return res.status(200).json({
-              success: true,
-              message: 'Nome atualizado no banco e no ESP32',
-              silo: {
-                id: silo._id,
-                nome: silo.nome,
-                dispositivo: silo.dispositivo
-              }
-            });
-          } else {
-            return res.status(400).json({
-              success: false,
-              error: data.error || 'Erro ao atualizar nome no ESP32',
-              status: data.status
-            });
-          }
-        }
-      } catch (error) {
-        // Atualiza apenas o banco em caso de timeout
-        silo.nome = novoNome.trim();
-        silo.dispositivo = novoNome.trim();
-        await silo.save();
-        
-        return res.status(200).json({
-          success: true,
-          message: 'Nome atualizado no banco. Aviso: ESP32 pode não ter recebido.',
-          silo: {
-            id: silo._id,
-            nome: silo.nome,
-            dispositivo: silo.dispositivo
-          }
-        });
-      }
-
-    } catch (error) {
-      console.error('Erro ao atualizar nome:', error);
-      res.status(500).json({
-        success: false,
-        error: error.message
-      });
-    }
-  }
+  // Não há mais atualização de nome na ESP
 
   static async listarComandos(req, res) {
     try {
@@ -478,9 +322,7 @@ export class MQTTProvisioningController {
         comandos: [
           { acao: 'ping', descricao: 'Verifica se o gateway está online' },
           { acao: 'scan', descricao: 'Escaneia dispositivos BLE disponíveis' },
-          { acao: 'provisionar', descricao: 'Provisiona um novo silo via BLE' },
-          { acao: 'desintegrar', descricao: 'Reseta um silo (volta para modo SETUP)' },
-          { acao: 'atualizar_nome', descricao: 'Atualiza o nome de um silo integrado' }
+          { acao: 'provisionar', descricao: 'Provisiona um novo silo via BLE' }
         ]
       });
       
