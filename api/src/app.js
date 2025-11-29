@@ -24,8 +24,8 @@ app.get("/api/auth/verificar", autenticar, AuthController.verificarToken);
 app.get('/api/mqtt-provisioning/status', autenticar, MQTTProvisioningController.status);
 app.post('/api/mqtt-provisioning/scan', autenticar, MQTTProvisioningController.scan);
 app.post('/api/mqtt-provisioning/provision', autenticar, MQTTProvisioningController.provision);
-app.post('/api/mqtt-provisioning/desintegrar', autenticar, MQTTProvisioningController.desintegrar); // ✨ NOVA
-app.post('/api/mqtt-provisioning/atualizar-nome', autenticar, MQTTProvisioningController.atualizarNome); // ✨ NOVA
+app.post('/api/mqtt-provisioning/desintegrar', autenticar, MQTTProvisioningController.desintegrar); 
+app.post('/api/mqtt-provisioning/atualizar-nome', autenticar, MQTTProvisioningController.atualizarNome); 
 app.get('/api/mqtt-provisioning/info', autenticar, MQTTProvisioningController.listarComandos);
 
 // ===== ROTAS DE SILOS =====
@@ -36,8 +36,8 @@ app.get("/api/silos/config/:dispositivo", SiloController.buscarConfiguracao); //
 app.get("/api/silos", autenticar, SiloController.listar);
 app.get("/api/silos/:id", autenticar, SiloController.buscarPorId);
 app.post("/api/silos", autenticar, validarSilo, SiloController.criar);
-app.put("/api/silos/:id", autenticar, validarAtualizacaoSilo, SiloController.atualizar); // ✨ ATUALIZADA (envia comando ESP32)
-app.delete("/api/silos/:id", autenticar, SiloController.deletar); // ✨ ATUALIZADA (envia comando reset)
+app.put("/api/silos/:id", autenticar, validarAtualizacaoSilo, SiloController.atualizar);
+app.delete("/api/silos/:id", autenticar, SiloController.deletar);
 
 // ===== ROTAS DE DADOS ESP32 =====
 app.get("/api/dados/exportar", autenticar, DadosController.exportar);
