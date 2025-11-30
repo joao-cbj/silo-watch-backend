@@ -7,6 +7,7 @@ import { SiloController } from "./controllers/SiloController.js";
 import { MQTTProvisioningController } from './controllers/MQTTProvisioningController.js';
 import { validarDados } from "./middlewares/validarDados.js";
 import { validarSilo, validarAtualizacaoSilo } from "./middlewares/validarSilo.js";
+import { MFAController } from './controllers/MFAController.js';
 import { autenticar } from "./middlewares/autenticar.js";
 
 const app = express();
@@ -46,6 +47,12 @@ app.get("/api/dados", autenticar, DadosController.listar);
 app.get("/api/dados/:dispositivoId", autenticar, DadosController.listarPorDispositivo);
 app.post("/api/dados", validarDados, DadosController.criar); // Sem autenticação para ESP32
 app.delete("/api/dados/:dispositivo", autenticar, DadosController.deletarPorDispositivo);
+
+// ===== ROTAS MFA =====
+app.get('/api/auth/mfa/status', autenticar, MFAController.status);
+app.post('/api/auth/mfa/setup', autenticar, MFAController.setup);
+app.post('/api/auth/mfa/verify', autenticar, MFAController.verify);
+app.post('/api/auth/mfa/disable', autenticar, MFAController.disable);
 
 // ===== ROTAS DE USUÁRIOS =====
 app.post("/api/usuarios", autenticar, UsuarioController.criar);

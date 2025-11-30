@@ -1,12 +1,17 @@
 import { AuthService } from "../services/AuthService.js";
+import speakeasy from 'speakeasy';
+import Usuario from '../models/Usuario.js';
 
 const authService = new AuthService();
 
 export class AuthController {
+  // Login com verificação de MFA
   static async login(req, res) {
     try {
-      const { email, senha } = req.body;
-      
+      const { email, senha, mfaCode } = req.body;
+
+      console.log('[Auth Login] Tentativa de login:', email);
+
       if (!email || !senha) {
         return res.status(400).json({ 
           success: false, 
@@ -14,12 +19,62 @@ export class AuthController {
         });
       }
 
+      // Busca usuário
+      const usuario = await Usuario.findOne({ email });
+      
+      if (!usuario || !(await usuario.compararSenha(senha))) {
+        console.log('[Auth Login] ✗ Credenciais inválidas');
+        return res.status(401).json({
+          success: false,
+          error: "Credenciais inválidas"
+        });
+      }
+
+      console.log('[Auth Login] Credenciais válidas. MFA enabled:', usuario.mfaEnabled);
+
+      // Verifica se MFA está ativo
+      if (usuario.mfaEnabled) {
+        // Se MFA está ativo mas código não foi enviado
+        if (!mfaCode) {
+          console.log('[Auth Login] MFA necessário, mas código não fornecido');
+          return res.status(200).json({
+            success: false,
+            requiresMFA: true,
+            message: "Digite o código do Microsoft Authenticator"
+          });
+        }
+
+        // Valida código MFA
+        console.log('[Auth Login] Verificando código MFA...');
+        const verified = speakeasy.totp.verify({
+          secret: usuario.mfaSecret,
+          encoding: 'base32',
+          token: mfaCode,
+          window: 2
+        });
+
+        if (!verified) {
+          console.log('[Auth Login] ✗ Código MFA inválido');
+          return res.status(401).json({
+            success: false,
+            error: "Código MFA inválido"
+          });
+        }
+
+        console.log('[Auth Login] ✓ Código MFA válido');
+      }
+
+      // Login bem-sucedido - gera token
       const resultado = await authService.login(email, senha);
+      
+      console.log('[Auth Login] ✓ Login bem-sucedido. Token gerado.');
+      
       res.status(200).json({ 
         success: true, 
         ...resultado 
       });
     } catch (error) {
+      console.error('[Auth Login] ✗ Erro:', error.message);
       const statusCode = error.message === "Credenciais inválidas" ? 401 : 500;
       res.status(statusCode).json({ 
         success: false, 

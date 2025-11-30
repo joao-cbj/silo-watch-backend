@@ -38,9 +38,10 @@ export class UsuarioController {
     try {
       const { id } = req.params;
       const usuario = await usuarioService.buscarPorId(id);
+      
       res.status(200).json({ 
         success: true, 
-        data: usuario 
+        usuario: usuario 
       });
     } catch (error) {
       const statusCode = error.message === "Usuário não encontrado" ? 404 : 500;
@@ -55,10 +56,17 @@ export class UsuarioController {
     try {
       const { id } = req.params;
       const dadosParaAtualizar = req.body;
+      
+      // Remove campos sensíveis se vier no body
+      delete dadosParaAtualizar.senha;
+      delete dadosParaAtualizar.mfaSecret;
+      
       const usuarioAtualizado = await usuarioService.atualizar(id, dadosParaAtualizar);
+      
+      // Retorna campo usuario ao invés de data
       res.status(200).json({ 
         success: true, 
-        data: usuarioAtualizado 
+        usuario: usuarioAtualizado 
       });
     } catch (error) {
       const statusCode = error.message === "Usuário não encontrado" ? 404 : 400;
@@ -69,7 +77,7 @@ export class UsuarioController {
     }
   }
 
-  // NOVO MÉTODO - Alteração de Senha
+  // Alteração de Senha com validação forte
   static async alterarSenha(req, res) {
     try {
       const { id } = req.params;
@@ -83,11 +91,27 @@ export class UsuarioController {
         });
       }
 
-      // Validar força da senha
+      // Validação de força da senha
       if (novaSenha.length < 8) {
         return res.status(400).json({
           success: false,
           error: "A nova senha deve ter no mínimo 8 caracteres"
+        });
+      }
+
+      const requisitos = {
+        maiuscula: /[A-Z]/.test(novaSenha),
+        minuscula: /[a-z]/.test(novaSenha),
+        numero: /[0-9]/.test(novaSenha),
+        especial: /[!@#$%^&*(),.?":{}|<>]/.test(novaSenha),
+      };
+
+      const cumpreRequisitos = Object.values(requisitos).filter(Boolean).length >= 4;
+
+      if (!cumpreRequisitos) {
+        return res.status(400).json({
+          success: false,
+          error: "A senha deve conter maiúscula, minúscula, número e caractere especial"
         });
       }
 

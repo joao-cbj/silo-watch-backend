@@ -1,10 +1,9 @@
-import UsuarioRepository from "../repositories/UsuarioRepository.js";
 import jwt from "jsonwebtoken";
 import Usuario from "../models/Usuario.js";
 
 export class AuthService {
   async login(email, senha) {
-    // Buscar usuário (não pode usar .lean() porque precisamos dos métodos)
+    // Buscar usuário
     const usuario = await Usuario.findOne({ email });
     
     if (!usuario) {
@@ -21,7 +20,7 @@ export class AuthService {
     // Gerar token JWT
     const token = jwt.sign(
       { 
-        _id: usuario._id, 
+        _id: usuario._id.toString(), // Mantém _id (será convertido para id no middleware)
         email: usuario.email,
         nome: usuario.nome 
       },
@@ -33,7 +32,7 @@ export class AuthService {
     return {
       token,
       usuario: {
-        _id: usuario._id,
+        id: usuario._id.toString(),
         nome: usuario.nome,
         email: usuario.email
       }

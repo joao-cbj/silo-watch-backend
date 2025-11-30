@@ -4,7 +4,21 @@ import bcrypt from "bcryptjs";
 const UsuarioSchema = new mongoose.Schema({
   nome: { type: String, required: true },
   email: { type: String, required: true, unique: true },
-  senha: { type: String, required: true }
+  senha: { type: String, required: true },
+  
+  // CAMPOS MFA
+  mfaEnabled: {
+    type: Boolean,
+    default: false
+  },
+  mfaSecret: {
+    type: String,
+    default: null
+  },
+  mfaBackupCodes: {
+    type: [String],
+    default: []
+  }
 }, {
   timestamps: true,
   collection: 'usuarios'
