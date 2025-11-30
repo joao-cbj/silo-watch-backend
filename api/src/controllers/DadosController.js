@@ -123,7 +123,6 @@ export class DadosController {
       const silosIntegrados = await Silo.find({ integrado: true }).lean();
 
       // Faz o "INNER JOIN" manual - apenas silos com dados E cadastrados
-      // MUDANÇA: Agora faz match pelo _id do silo
       const dadosComSilo = ultimasDados
         .map(dado => {
           const silo = silosIntegrados.find(s => s._id.toString() === dado._id);

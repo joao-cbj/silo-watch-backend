@@ -18,7 +18,7 @@ export class DadosService {
     return { dados, total };
   }
 
-  // NOVO - Histórico de um dispositivo específico
+  // Histórico de um dispositivo específico
   async buscarHistorico(dispositivoId, horas = 24) {
     const dataLimite = new Date();
     dataLimite.setHours(dataLimite.getHours() - horas);
@@ -26,7 +26,7 @@ export class DadosService {
     return await this.repository.buscarHistorico(dispositivoId, dataLimite);
   }
 
-  // NOVO - Última leitura de cada dispositivo
+  // Última leitura de cada dispositivo
   async buscarUltimasLeituras() {
     return await this.repository.buscarUltimasLeituras();
   }

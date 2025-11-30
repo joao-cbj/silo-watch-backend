@@ -49,7 +49,7 @@ export class UsuarioService {
     return usuarioAtualizado;
   }
 
-  // NOVO MÉTODO - Alteração de Senha
+  // Alteração de Senha
   async alterarSenha(usuarioId, senhaAtual, novaSenha) {
     // Buscar usuário com senha (não usar .lean() para ter acesso aos métodos)
     const usuario = await Usuario.findById(usuarioId);

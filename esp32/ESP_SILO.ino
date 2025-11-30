@@ -1,12 +1,6 @@
-/**
- * ESP32 - SILO (Sensor Node)
- * Provisionamento via BLE
- * Envio de dados via ESP-NOW para Gateway
- * ✨ Recepção de comandos do Gateway
- */
-
 #include <WiFi.h>
 #include <esp_now.h>
+#include <esp_wifi.h>
 #include <DHT.h>
 #include <Preferences.h>
 #include <BLEDevice.h>
@@ -15,47 +9,27 @@
 #include <BLE2902.h>
 #include <ArduinoJson.h>
 
-// ===== CONFIGURAÇÕES DO HARDWARE =====
 #define DHTPIN 4
 #define DHTTYPE DHT22
 #define LED 8
-#define BUTTON_PIN 0
+#define BUTTON_PIN 1
 
-// ===== UUIDs BLE =====
 #define SERVICE_UUID "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
 #define CHARACTERISTIC_UUID "beb5483e-36e1-4688-b7f5-ea07361b26a8"
 
-// ===== ESTRUTURAS ESP-NOW =====
 struct Dado {
-  char d[32];
+  char d[32];  // dispositivo (nome do silo)
   float t;
   float u;
   unsigned long ts;
 };
 
-// ✨ NOVO: Estrutura para comandos (Gateway → Silo)
-struct Comando {
-  char tipo[16];        // "reset", "update_name"
-  char dispositivo[32]; // dispositivo alvo
-  char novoNome[32];    // novo nome
-  unsigned long ts;
-};
-
-// ✨ NOVO: Estrutura para respostas (Silo → Gateway)
-struct Resposta {
-  char dispositivo[32];
-  char status[16];    // "ok", "erro"
-  char tipo[16];      // tipo do comando
-  unsigned long ts;
-};
-
-// ===== VARIÁVEIS GLOBAIS =====
 DHT dht(DHTPIN, DHTTYPE);
 Preferences preferences;
 
-String siloNome = "";
-String siloId = "";
+String dispositivo = "";  // ID do silo (MongoDB ObjectId)
 uint8_t gatewayMac[6] = {0};
+uint8_t wifiChannel = 1;
 bool configurado = false;
 
 enum Modo { MODO_SETUP, MODO_NORMAL };
@@ -68,7 +42,6 @@ bool configRecebida = false;
 
 Dado dadosEnvio;
 
-// ===== FUNÇÕES AUXILIARES =====
 void blink(int vezes, int intervalo = 200) {
   for (int i = 0; i < vezes; i++) {
     digitalWrite(LED, HIGH);
@@ -78,67 +51,148 @@ void blink(int vezes, int intervalo = 200) {
   }
 }
 
+String normalizarMAC(String mac) {
+  mac.toLowerCase();
+  mac.replace(":", "");
+  mac.replace("-", "");
+  mac.replace(" ", "");
+  mac.trim();
+  return mac;
+}
+
 void salvarConfig() {
   preferences.begin("silo", false);
-  preferences.putString("nome", siloNome);
-  preferences.putString("id", siloId);
+  preferences.putString("dispositivo", dispositivo);
   preferences.putBytes("gateway", gatewayMac, 6);
+  preferences.putUChar("channel", wifiChannel);
   preferences.putBool("config", true);
   preferences.end();
-  
-  Serial.println("✓ Configuração salva");
+  delay(50);
 }
 
 bool carregarConfig() {
   preferences.begin("silo", true);
   configurado = preferences.getBool("config", false);
-  
+
   if (configurado) {
-    siloNome = preferences.getString("nome", "");
-    siloId = preferences.getString("id", "");
+    dispositivo = preferences.getString("dispositivo", "");
     preferences.getBytes("gateway", gatewayMac, 6);
+    wifiChannel = preferences.getUChar("channel", 1);
+  }
+
+  preferences.end();
+  return configurado && dispositivo.length() > 0;
+}
+
+void apagarConfig() {
+  for (int tentativa = 1; tentativa <= 5; tentativa++) {
+    preferences.begin("silo", false);
+    preferences.clear();
+    preferences.end();
     
-    Serial.println("✓ Config carregada");
-    Serial.println("Nome: " + siloNome);
-    Serial.println("ID: " + siloId);
-    Serial.printf("Gateway: %02X:%02X:%02X:%02X:%02X:%02X\n",
-                  gatewayMac[0], gatewayMac[1], gatewayMac[2],
-                  gatewayMac[3], gatewayMac[4], gatewayMac[5]);
+    delay(100);
+    
+    preferences.begin("silo", false);
+    preferences.putBool("config", false);
+    preferences.putString("dispositivo", "");
+    preferences.remove("gateway");
+    preferences.remove("channel");
+    preferences.end();
+    
+    delay(200);
+    
+    preferences.begin("silo", true);
+    bool ainda = preferences.getBool("config", false);
+    String dispVerif = preferences.getString("dispositivo", "");
+    preferences.end();
+    
+    if (!ainda && dispVerif == "") {
+      blink(5, 150);
+      return;
+    }
+    
+    delay(100);
   }
   
-  preferences.end();
-  return configurado;
+  blink(5, 150);
 }
 
 void resetarConfig() {
-  preferences.begin("silo", false);
-  preferences.clear();
-  preferences.end();
+  if (modoAtual == MODO_NORMAL) {
+    esp_now_deinit();
+    delay(200);
+  }
   
-  Serial.println("✓ Config resetada");
+  WiFi.disconnect(true);
+  WiFi.mode(WIFI_OFF);
+  delay(200);
+  
+  apagarConfig();
+  
+  for (int i = 0; i < 3; i++) {
+    delay(200);
+    preferences.begin("silo", true);
+    bool ainda = preferences.getBool("config", false);
+    preferences.end();
+    
+    if (!ainda) break;
+    
+    preferences.begin("silo", false);
+    preferences.clear();
+    preferences.end();
+  }
+  
+  delay(100);
   blink(10, 100);
+  delay(1000);
   ESP.restart();
 }
 
-// ===== BLE CALLBACKS =====
+void verificarBotao() {
+  static unsigned long tempoInicioBotao = 0;
+  static bool botaoFoiPressionado = false;
+  
+  bool botaoPressionado = (digitalRead(BUTTON_PIN) == LOW);
+  
+  // Detecta início do pressionamento
+  if (botaoPressionado && !botaoFoiPressionado) {
+    tempoInicioBotao = millis();
+    botaoFoiPressionado = true;
+  }
+  
+  // Detecta soltura do botão
+  if (!botaoPressionado && botaoFoiPressionado) {
+    botaoFoiPressionado = false;
+    tempoInicioBotao = 0;
+  }
+  
+  // Verifica se passou 5 segundos COM o botão ainda pressionado
+  if (botaoPressionado && botaoFoiPressionado && 
+      (millis() - tempoInicioBotao >= 5000)) {
+    
+    // ✅ IMPORTANTE: Reseta flags ANTES de resetar
+    botaoFoiPressionado = false;
+    tempoInicioBotao = 0;
+    
+    blink(5, 100);
+    delay(500);
+    resetarConfig();  // Só executa UMA vez
+  }
+}
+
 class ServerCallbacks: public BLEServerCallbacks {
   void onConnect(BLEServer* pServer) {
     deviceConnected = true;
-    Serial.println("BLE: Cliente conectado");
     blink(2, 100);
   }
 
   void onDisconnect(BLEServer* pServer) {
     deviceConnected = false;
-    Serial.println("BLE: Cliente desconectado");
-    
     if (configRecebida) {
-      Serial.println("✓ Reiniciando em modo normal...");
       delay(1000);
       ESP.restart();
     } else {
       BLEDevice::startAdvertising();
-      Serial.println("BLE: Advertising reiniciado");
     }
   }
 };
@@ -146,272 +200,160 @@ class ServerCallbacks: public BLEServerCallbacks {
 class CharCallbacks: public BLECharacteristicCallbacks {
   void onWrite(BLECharacteristic *pCharacteristic) {
     String json = pCharacteristic->getValue().c_str();
-    
-    if (json.length() > 0) {
-      Serial.println("BLE: Dados recebidos");
-      Serial.println(json);
+    if (json.length() == 0) return;
+
+    StaticJsonDocument<256> doc;
+    DeserializationError error = deserializeJson(doc, json);
+    if (error) return;
+
+    if (doc.containsKey("dispositivo")) {
+      dispositivo = doc["dispositivo"].as<String>();
+      String gwMac = doc["gateway"].as<String>();
       
-      StaticJsonDocument<256> doc;
-      DeserializationError error = deserializeJson(doc, json);
-      
-      if (!error) {
-        siloNome = doc["nome"].as<String>();
-        siloId = doc["id"].as<String>();
-        String gwMac = doc["gateway"].as<String>();
-        
-        sscanf(gwMac.c_str(), "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx",
-               &gatewayMac[0], &gatewayMac[1], &gatewayMac[2],
-               &gatewayMac[3], &gatewayMac[4], &gatewayMac[5]);
-        
-        Serial.println("✓ Config recebida!");
-        Serial.println("Nome: " + siloNome);
-        Serial.printf("Gateway: %02X:%02X:%02X:%02X:%02X:%02X\n",
-                      gatewayMac[0], gatewayMac[1], gatewayMac[2],
-                      gatewayMac[3], gatewayMac[4], gatewayMac[5]);
-        
-        salvarConfig();
-        configRecebida = true;
-        
-        blink(5, 200);
+      if (doc.containsKey("channel")) {
+        wifiChannel = doc["channel"].as<uint8_t>();
       } else {
-        Serial.println("✗ Erro ao parsear JSON");
+        wifiChannel = 1;
       }
+      
+      gwMac = normalizarMAC(gwMac);
+      
+      if (gwMac.length() != 12) {
+        blink(10, 100);
+        return;
+      }
+      
+      for (int i = 0; i < 6; i++) {
+        String byteStr = gwMac.substring(i * 2, i * 2 + 2);
+        gatewayMac[i] = (uint8_t)strtol(byteStr.c_str(), NULL, 16);
+      }
+
+      salvarConfig();
+      configRecebida = true;
+      blink(5, 200);
     }
   }
 };
 
-// ===== MODO SETUP (BLE) =====
 void iniciarModoSetup() {
-  Serial.println("\n=== MODO SETUP (BLE) ===");
+  WiFi.mode(WIFI_OFF);
+  delay(100);
+  WiFi.mode(WIFI_STA);
+  delay(500);
+  
+  String macAddress = WiFi.macAddress();
   
   WiFi.mode(WIFI_OFF);
   delay(100);
   
-  String macAddress = WiFi.macAddress();
   macAddress.replace(":", "");
   String deviceName = "SILO_" + macAddress.substring(6);
   
-  Serial.println("Nome BLE: " + deviceName);
-  Serial.println("MAC: " + WiFi.macAddress());
-  
+  if (deviceName == "SILO_000000" || deviceName.length() < 8) {
+    WiFi.mode(WIFI_STA);
+    delay(1000);
+    macAddress = WiFi.macAddress();
+    macAddress.replace(":", "");
+    deviceName = "SILO_" + macAddress.substring(6);
+    WiFi.mode(WIFI_OFF);
+  }
+
   BLEDevice::init(deviceName.c_str());
-  
+
   bleServer = BLEDevice::createServer();
   bleServer->setCallbacks(new ServerCallbacks());
-  
+
   BLEService *service = bleServer->createService(SERVICE_UUID);
-  
+
   bleChar = service->createCharacteristic(
     CHARACTERISTIC_UUID,
     BLECharacteristic::PROPERTY_READ |
     BLECharacteristic::PROPERTY_WRITE
   );
-  
+
   bleChar->setCallbacks(new CharCallbacks());
   bleChar->addDescriptor(new BLE2902());
-  
+
   service->start();
-  
+
   BLEAdvertising *advertising = BLEDevice::getAdvertising();
   advertising->addServiceUUID(SERVICE_UUID);
   advertising->setScanResponse(true);
-  advertising->setMinPreferred(0x06);
-  advertising->setMinPreferred(0x12);
   BLEDevice::startAdvertising();
-  
-  Serial.println("✓ BLE ativo - Aguardando provisionamento...");
+
   blink(3, 300);
 }
 
-// ===== MODO NORMAL (ESP-NOW) =====
 void OnDataSent(const wifi_tx_info_t *tx_info, esp_now_send_status_t status) {
-  Serial.print("Status envio: ");
-  Serial.println(status == ESP_NOW_SEND_SUCCESS ? "✓ OK" : "✗ FALHA");
-  
   if (status == ESP_NOW_SEND_SUCCESS) {
     blink(1, 50);
   } else {
-    blink(3, 500);
-  }
-}
-
-// ✨ NOVO: Callback para receber comandos do Gateway
-void OnDataRecv(const esp_now_recv_info *info, const uint8_t *data, int len) {
-  Serial.println("\n=== ESP-NOW: Comando Recebido ===");
-  
-  if (len != sizeof(Comando)) {
-    Serial.println("✗ Tamanho inválido");
-    return;
-  }
-  
-  Comando* cmd = (Comando*)data;
-  
-  Serial.printf("Tipo: %s\n", cmd->tipo);
-  Serial.printf("Dispositivo: %s\n", cmd->dispositivo);
-  Serial.printf("Timestamp: %lu\n", cmd->ts);
-  
-  // Verifica se o comando é para este dispositivo
-  if (strcmp(cmd->dispositivo, siloNome.c_str()) != 0) {
-    Serial.println("✗ Comando não é para este dispositivo");
-    return;
-  }
-  
-  Resposta resp;
-  memset(&resp, 0, sizeof(resp));
-  strcpy(resp.dispositivo, siloNome.c_str());
-  strcpy(resp.tipo, cmd->tipo);
-  resp.ts = millis();
-  
-  // Processa comando
-  if (strcmp(cmd->tipo, "reset") == 0) {
-    Serial.println("\n🔥 COMANDO RESET RECEBIDO!");
-    Serial.println("Apagando configurações e reiniciando...");
-    
-    strcpy(resp.status, "ok");
-    esp_now_send(gatewayMac, (uint8_t*)&resp, sizeof(resp));
-    
-    blink(10, 100);
-    delay(1000);
-    
-    resetarConfig(); // Reinicia em modo SETUP
-  }
-  else if (strcmp(cmd->tipo, "update_name") == 0) {
-    Serial.println("\n✏️  COMANDO ATUALIZAR NOME!");
-    Serial.printf("Nome atual: %s\n", siloNome.c_str());
-    Serial.printf("Novo nome: %s\n", cmd->novoNome);
-    
-    // Atualiza nome
-    siloNome = String(cmd->novoNome);
-    salvarConfig();
-    
-    strcpy(resp.status, "ok");
-    esp_now_send(gatewayMac, (uint8_t*)&resp, sizeof(resp));
-    
-    Serial.println("✓ Nome atualizado!");
-    blink(5, 150);
-  }
-  else {
-    Serial.println("✗ Comando desconhecido");
-    strcpy(resp.status, "erro");
-    esp_now_send(gatewayMac, (uint8_t*)&resp, sizeof(resp));
+    blink(3, 300);
   }
 }
 
 void iniciarModoNormal() {
-  Serial.println("\n=== MODO NORMAL (ESP-NOW) ===");
-  
-  if (bleServer != nullptr) {
-    BLEDevice::deinit(true);
-  }
-  
+  BLEDevice::deinit(true);
   WiFi.disconnect(true);
-  WiFi.mode(WIFI_OFF);
-  delay(100);
-  
   WiFi.mode(WIFI_STA);
-  Serial.println("MAC: " + WiFi.macAddress());
   
+  esp_wifi_set_promiscuous(true);
+  esp_wifi_set_channel(wifiChannel, WIFI_SECOND_CHAN_NONE);
+  esp_wifi_set_promiscuous(false);
+  
+  delay(100);
+
   if (esp_now_init() != ESP_OK) {
-    Serial.println("✗ Erro ESP-NOW");
-    blink(10, 100);
     ESP.restart();
-    return;
   }
-  
-  Serial.println("✓ ESP-NOW OK");
-  
-  // Registra callbacks
+
   esp_now_register_send_cb(OnDataSent);
-  esp_now_register_recv_cb(OnDataRecv); // ✨ NOVO: Para receber comandos
-  Serial.println("✓ Callbacks registrados");
-  
-  // Adiciona Gateway como peer
+
   esp_now_peer_info_t peerInfo = {};
   memcpy(peerInfo.peer_addr, gatewayMac, 6);
-  peerInfo.channel = 0;
+  peerInfo.channel = wifiChannel;
   peerInfo.encrypt = false;
   peerInfo.ifidx = WIFI_IF_STA;
-  
+
   if (esp_now_add_peer(&peerInfo) != ESP_OK) {
-    Serial.println("✗ Erro ao adicionar peer");
-    blink(10, 100);
     ESP.restart();
-    return;
   }
-  
-  Serial.println("✓ Gateway adicionado");
-  Serial.printf("Gateway: %02X:%02X:%02X:%02X:%02X:%02X\n",
-                gatewayMac[0], gatewayMac[1], gatewayMac[2],
-                gatewayMac[3], gatewayMac[4], gatewayMac[5]);
-  
+
   dht.begin();
-  Serial.println("✓ DHT22 OK");
-  
-  Serial.println("\n✓✓✓ SISTEMA PRONTO ✓✓✓");
-  Serial.println("Enviando dados a cada 30s...");
-  Serial.println("Aguardando comandos do Gateway...\n");
   blink(4, 200);
 }
 
 void enviarDados() {
   float temp = dht.readTemperature();
   float hum = dht.readHumidity();
-  
+
   if (isnan(temp) || isnan(hum)) {
-    Serial.println("✗ Erro leitura DHT");
-    blink(3, 500);
     return;
   }
-  
+
   memset(&dadosEnvio, 0, sizeof(dadosEnvio));
-  siloNome.toCharArray(dadosEnvio.d, 32);
+  dispositivo.toCharArray(dadosEnvio.d, 32);
   dadosEnvio.t = temp;
   dadosEnvio.u = hum;
   dadosEnvio.ts = millis();
-  
-  Serial.println("\n========== LEITURA ==========");
-  Serial.printf("Silo: %s\n", dadosEnvio.d);
-  Serial.printf("Temp: %.2f °C\n", temp);
-  Serial.printf("Umid: %.2f %%\n", hum);
-  Serial.printf("Timestamp: %lu ms\n", dadosEnvio.ts);
-  Serial.println("Enviando para Gateway...");
-  
+
   esp_err_t result = esp_now_send(gatewayMac, (uint8_t *)&dadosEnvio, sizeof(dadosEnvio));
   
-  if (result == ESP_OK) {
-    Serial.println("✓ Envio iniciado");
-  } else {
-    Serial.print("✗ Erro no envio: ");
-    Serial.println(result);
-    blink(5, 300);
+  if (result != ESP_OK) {
+    delay(500);
+    esp_now_send(gatewayMac, (uint8_t *)&dadosEnvio, sizeof(dadosEnvio));
   }
 }
 
-// ===== SETUP =====
 void setup() {
   Serial.begin(115200);
   delay(1000);
-  
   pinMode(LED, OUTPUT);
   pinMode(BUTTON_PIN, INPUT_PULLUP);
   digitalWrite(LED, LOW);
-  
-  Serial.println("\n==============================");
-  Serial.println("ESP32 - SILO SENSOR NODE");
-  Serial.println("BLE + ESP-NOW + Comandos");
-  Serial.println("==============================");
-  
-  blink(1, 500);
-  
-  // Verifica botão de reset
-  if (digitalRead(BUTTON_PIN) == LOW) {
-    Serial.println("Botão detectado. Reset em 3s...");
-    delay(3000);
-    if (digitalRead(BUTTON_PIN) == LOW) {
-      resetarConfig();
-    }
-  }
-  
+
+  blink(1, 300);
+
   if (carregarConfig()) {
     modoAtual = MODO_NORMAL;
     iniciarModoNormal();
@@ -421,11 +363,25 @@ void setup() {
   }
 }
 
-// ===== LOOP =====
 void loop() {
+  verificarBotao();
+  
   if (modoAtual == MODO_NORMAL) {
-    enviarDados();
-    delay(30000); // Envia a cada 30 segundos
+    if (dispositivo.length() == 0) {
+      delay(1000);
+      ESP.restart();
+      return;
+    }
+    
+    static unsigned long ultimoEnvio = 0;
+    unsigned long agora = millis();
+    
+    if (agora - ultimoEnvio >= 30000) {
+      enviarDados();
+      ultimoEnvio = agora;
+    }
+    
+    delay(100);  // Delay curto para verificar botão frequentemente
   } else {
     delay(1000);
   }

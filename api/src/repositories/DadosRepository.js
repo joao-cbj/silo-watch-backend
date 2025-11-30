@@ -13,7 +13,7 @@ export class DadosRepository {
     return await Dados.countDocuments(filtros);
   }
 
-  // NOVO - Histórico de um dispositivo
+  // Histórico de um dispositivo
   async buscarHistorico(dispositivoId, dataLimite) {
     return await Dados.find({
       dispositivo: dispositivoId,
@@ -23,7 +23,7 @@ export class DadosRepository {
     .lean();
   }
 
-  // NOVO - Última leitura de cada dispositivo (agregação)
+  // Última leitura de cada dispositivo (agregação)
   async buscarUltimasLeituras() {
     return await Dados.aggregate([
       {
