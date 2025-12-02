@@ -9,7 +9,6 @@ export class AuthController {
   static async login(req, res) {
     try {
       const { email, senha, mfaCode } = req.body;
-
       console.log('[Auth Login] Tentativa de login:', email);
 
       if (!email || !senha) {
@@ -21,7 +20,6 @@ export class AuthController {
 
       // Busca usuário
       const usuario = await Usuario.findOne({ email });
-      
       if (!usuario || !(await usuario.compararSenha(senha))) {
         console.log('[Auth Login] ✗ Credenciais inválidas');
         return res.status(401).json({
@@ -66,12 +64,15 @@ export class AuthController {
 
       // Login bem-sucedido - gera token
       const resultado = await authService.login(email, senha);
-      
-      console.log('[Auth Login] ✓ Login bem-sucedido. Token gerado.');
+      console.log('[Auth Login] ✓ Login bem-sucedido. Token gerado. Tipo:', usuario.tipo);
       
       res.status(200).json({ 
         success: true, 
-        ...resultado 
+        ...resultado,
+        usuario: {
+          ...resultado.usuario,
+          tipo: usuario.tipo // Garante que o tipo está incluído
+        }
       });
     } catch (error) {
       console.error('[Auth Login] ✗ Erro:', error.message);
@@ -85,10 +86,26 @@ export class AuthController {
 
   static async verificarToken(req, res) {
     try {
-      // O middleware já validou o token e anexou o usuário em req.usuario
+      // Busca usuário completo para incluir o tipo
+      const usuario = await Usuario.findById(req.usuario._id || req.usuario.id).lean();
+      
+      if (!usuario) {
+        return res.status(404).json({
+          success: false,
+          error: "Usuário não encontrado"
+        });
+      }
+
       res.status(200).json({ 
         success: true, 
-        usuario: req.usuario 
+        usuario: {
+          _id: usuario._id,
+          id: usuario._id,
+          nome: usuario.nome,
+          email: usuario.email,
+          tipo: usuario.tipo,
+          createdAt: usuario.createdAt
+        }
       });
     } catch (error) {
       res.status(500).json({ 

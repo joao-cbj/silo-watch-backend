@@ -12,17 +12,18 @@ export class AuthService {
 
     // Verificar senha
     const senhaValida = await usuario.compararSenha(senha);
-    
     if (!senhaValida) {
       throw new Error("Credenciais inválidas");
     }
 
-    // Gerar token JWT
+    // Gerar token JWT com tipo de usuário
     const token = jwt.sign(
       { 
-        _id: usuario._id.toString(), // Mantém _id (será convertido para id no middleware)
+        _id: usuario._id.toString(),
+        id: usuario._id.toString(), // Adiciona id também
         email: usuario.email,
-        nome: usuario.nome 
+        nome: usuario.nome,
+        tipo: usuario.tipo // IMPORTANTE: Incluir tipo no token
       },
       process.env.JWT_SECRET,
       { expiresIn: "7d" }
@@ -32,9 +33,13 @@ export class AuthService {
     return {
       token,
       usuario: {
+        _id: usuario._id.toString(),
         id: usuario._id.toString(),
         nome: usuario.nome,
-        email: usuario.email
+        email: usuario.email,
+        tipo: usuario.tipo, // IMPORTANTE: Incluir tipo na resposta
+        createdAt: usuario.createdAt,
+        mfaEnabled: usuario.mfaEnabled
       }
     };
   }

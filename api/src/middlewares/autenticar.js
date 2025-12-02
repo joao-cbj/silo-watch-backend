@@ -27,21 +27,18 @@ export function autenticar(req, res, next) {
     const token = parts[1];
 
     // Verificar token
-    const decoded = jwt.verify(
-      token, 
-      process.env.JWT_SECRET 
-    );
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    // Padroniza req.usuario com ambos id e _id
+    // Padroniza req.usuario com todos os campos necessários
     req.usuario = {
-      id: decoded._id || decoded.id,     // id aponta para _id
-      _id: decoded._id || decoded.id,    // mantém _id original
+      id: decoded._id || decoded.id,
+      _id: decoded._id || decoded.id,
       email: decoded.email,
-      nome: decoded.nome
+      nome: decoded.nome,
+      tipo: decoded.tipo || 'operador' // Fallback para operador se não existir
     };
 
-    console.log('[Auth] ✓ Token válido. Usuário:', req.usuario.id);
-    
+    console.log('[Auth] ✓ Token válido. Usuário:', req.usuario.id, '- Tipo:', req.usuario.tipo);
     next();
   } catch (error) {
     console.error('[Auth] ✗ Erro ao verificar token:', error.message);

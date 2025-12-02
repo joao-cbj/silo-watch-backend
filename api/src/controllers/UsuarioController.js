@@ -6,6 +6,15 @@ export class UsuarioController {
   static async criar(req, res) {
     try {
       const dadosUsuario = req.body;
+      
+      // Validar tipo de usuário
+      if (dadosUsuario.tipo && !['admin', 'operador'].includes(dadosUsuario.tipo)) {
+        return res.status(400).json({
+          success: false,
+          error: "Tipo de usuário inválido. Use 'admin' ou 'operador'"
+        });
+      }
+      
       const novoUsuario = await usuarioService.criar(dadosUsuario);
       res.status(201).json({ 
         success: true, 
@@ -60,6 +69,23 @@ export class UsuarioController {
       // Remove campos sensíveis se vier no body
       delete dadosParaAtualizar.senha;
       delete dadosParaAtualizar.mfaSecret;
+      
+      // Operadores não podem alterar o próprio tipo
+      const usuarioLogado = req.usuarioCompleto;
+      if (usuarioLogado.tipo === 'operador' && dadosParaAtualizar.tipo) {
+        return res.status(403).json({
+          success: false,
+          error: "Você não pode alterar seu tipo de usuário"
+        });
+      }
+      
+      // Validar tipo se estiver sendo atualizado
+      if (dadosParaAtualizar.tipo && !['admin', 'operador'].includes(dadosParaAtualizar.tipo)) {
+        return res.status(400).json({
+          success: false,
+          error: "Tipo de usuário inválido. Use 'admin' ou 'operador'"
+        });
+      }
       
       const usuarioAtualizado = await usuarioService.atualizar(id, dadosParaAtualizar);
       
@@ -136,6 +162,16 @@ export class UsuarioController {
   static async deletar(req, res) {
     try {
       const { id } = req.params;
+      const usuarioLogado = req.usuarioCompleto;
+      
+      // Impedir que admin delete a si mesmo
+      if (usuarioLogado._id.toString() === id) {
+        return res.status(400).json({
+          success: false,
+          error: "Você não pode deletar sua própria conta"
+        });
+      }
+      
       await usuarioService.deletar(id);
       res.status(200).json({ 
         success: true, 

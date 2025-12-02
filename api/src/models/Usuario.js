@@ -6,6 +6,14 @@ const UsuarioSchema = new mongoose.Schema({
   email: { type: String, required: true, unique: true },
   senha: { type: String, required: true },
   
+  // Tipo de usuário
+  tipo: {
+    type: String,
+    enum: ['admin', 'operador'],
+    default: 'operador',
+    required: true
+  },
+  
   // CAMPOS MFA
   mfaEnabled: {
     type: Boolean,
@@ -34,6 +42,16 @@ UsuarioSchema.pre('save', async function(next) {
 // Método para comparar senha
 UsuarioSchema.methods.compararSenha = async function(senhaInformada) {
   return await bcrypt.compare(senhaInformada, this.senha);
+};
+
+// Método para verificar se é admin
+UsuarioSchema.methods.isAdmin = function() {
+  return this.tipo === 'admin';
+};
+
+// Método para verificar se é operador
+UsuarioSchema.methods.isOperador = function() {
+  return this.tipo === 'operador';
 };
 
 export default mongoose.model("Usuario", UsuarioSchema);
