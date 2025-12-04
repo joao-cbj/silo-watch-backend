@@ -210,7 +210,7 @@ Após provisionado:
 ### Gateway → Nuvem
 
 **MQTT:**
-- **Broker:** z02f627e.ala.us-east-1.emqxsl.com
+- **Broker:** SUA-URL-BROKER.com
 - **Porta:** 8883 (TLS)
 - **Tópico de inscrição:** `gateway/comando`
 - **Tópicos de publicação:**
@@ -219,7 +219,7 @@ Após provisionado:
   - `gateway/resposta/provision`
 
 **API REST:**
-- **Endpoint:** https://silo-watch-backend.onrender.com/api/dados
+- **Endpoint:** https://SUA-API-BACKEND.com/api/dados
 - **Método:** POST
 - **Content-Type:** application/json
 
